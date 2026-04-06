@@ -192,11 +192,19 @@ function cgCopyCode() {
 //  KEYENCE KV MNEMONIC IL GENERATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Section order for the generated file: Error → Manual → Origin → Auto → Output
+// '_other' covers any mode name that does not match the four standard modes.
+const KV_SECTION_ORDER = ['Error', 'Manual', 'Origin', 'Auto'];
+
+// Matches Keyence KV / IEC address literals such as Y0.00, @MR100, %QX0.0
+const KV_ADDR_RE = /^[%@]|^[A-Z]{1,3}\d/;
+
 function generateKVAll(diagIds, opts) {
   const lines = [];
   let totalSteps = 0;
   const timestamp = new Date().toLocaleString('vi-VN');
 
+  // ── File header ─────────────────────────────────────────────────────────
   lines.push('; ╔══════════════════════════════════════════════════════╗');
   lines.push('; ║  GRAFCET Studio — Keyence KV Mnemonic IL             ║');
   lines.push(`; ║  Project : ${(project.name || '').padEnd(42)}║`);
@@ -204,8 +212,12 @@ function generateKVAll(diagIds, opts) {
   lines.push('; ╚══════════════════════════════════════════════════════╝');
   lines.push('');
 
-  // Each diagram gets its own base MR offset
-  // baseMR is the starting address; each diagram gets allocated a range
+  // ── Pass 1: load all diagrams, allocate MR, group by mode ───────────────
+  const sections = {};
+  KV_SECTION_ORDER.forEach(m => { sections[m] = []; });
+  sections['_other'] = [];
+
+  const loadedDiags = [];
   let mrOffset = opts.baseMR;
 
   diagIds.forEach(diagId => {
@@ -214,22 +226,86 @@ function generateKVAll(diagIds, opts) {
     const data = loadDiagramData(diagId);
     if (!data?.state) return;
     const s = data.state;
-    const unitName = (project.units || []).find(u => u.id === diag.unitId)?.name || diag.unit || '';
-    const diagLabel = (unitName ? unitName + ' / ' : '') + (diag.name || diagId);
+    const mode = diag.mode || 'Auto';
 
-    lines.push('');
-    lines.push('; ┌──────────────────────────────────────────────────────');
-    lines.push(`; │  ${diagLabel}`);
-    lines.push(`; │  Mode: ${diag.mode || 'Auto'}  |  Base @MR: ${mrOffset}`);
-    lines.push('; └──────────────────────────────────────────────────────');
-    lines.push('');
+    // Build sequence and pre-allocate MR addresses for this diagram
+    const sequence = cgResolveSequence(s);
+    const mrMap = {};
+    sequence.forEach((item, i) => {
+      const base = mrOffset + i * 2;
+      mrMap[item.step.id] = {
+        exec: '@MR' + String(base).padStart(3, '0'),
+        done: '@MR' + String(base + 1).padStart(3, '0')
+      };
+    });
+    mrOffset += Math.max(sequence.length * 2, 2) + 2;
+    // Each step needs 2 MR bits (exec + done).  The trailing +2 leaves a gap
+    // between diagrams to simplify manual editing in KV Studio.
 
-    const result = generateKVDiagram(diag, s, { ...opts, mrOffset });
-    lines.push(...result.lines);
-    totalSteps += result.stepCount;
-    // advance mrOffset by (stepCount * 2) rounded up to next even number
-    mrOffset += Math.ceil(result.stepCount * 2 / 2) * 2 + 2;
+    const entry = { diag, s, mode, sequence, mrMap };
+    loadedDiags.push(entry);
+    const key = KV_SECTION_ORDER.includes(mode) ? mode : '_other';
+    sections[key].push(entry);
   });
+
+  // ── Pass 2: build signal→action map for Output section ──────────────────
+  // Maps physicalAddr → [{execMR, mode, stepNum, stepLabel, varLabel}]
+  // Only N-qualified actions are aggregated here (they drive outputs by step state).
+  const signalActionMap = {};
+  loadedDiags.forEach(({ s, mode, sequence, mrMap }) => {
+    const vars = s.vars || [];
+    sequence.forEach(({ step }) => {
+      const mr = mrMap[step.id];
+      if (!mr) return;
+      (step.actions || []).forEach(act => {
+        if (!act.variable && !act.address) return;
+        if ((act.qualifier || 'N') !== 'N') return;
+        const addr = cgResolveAddrFull(act.address || act.variable, vars);
+        if (!addr) return;
+        if (!signalActionMap[addr]) signalActionMap[addr] = [];
+        signalActionMap[addr].push({
+          execMR: mr.exec,
+          mode,
+          stepNum: step.number,
+          stepLabel: step.label || '',
+          varLabel: act.variable || addr
+        });
+      });
+    });
+  });
+
+  // ── Pass 3: generate code for each section ──────────────────────────────
+  [...KV_SECTION_ORDER, '_other'].forEach(mode => {
+    const diagsInSection = sections[mode];
+    if (!diagsInSection.length) return;
+
+    const sectionTitle = mode === '_other' ? 'OTHER' : mode.toUpperCase();
+    lines.push('');
+    lines.push(...cgSectionBanner(sectionTitle));
+
+    diagsInSection.forEach(({ diag, s, mode: m, sequence, mrMap }) => {
+      const unitName = (project.units || []).find(u => u.id === diag.unitId)?.name || diag.unit || '';
+      const diagLabel = (unitName ? unitName + ' / ' : '') + (diag.name || diag.id);
+      const firstMR = sequence.length ? mrMap[sequence[0].step.id]?.exec : '?';
+
+      lines.push('');
+      lines.push('; ┌──────────────────────────────────────────────────────');
+      lines.push(`; │  ${diagLabel}`);
+      lines.push(`; │  Mode: ${m}  |  Base @MR: ${firstMR}`);
+      lines.push('; └──────────────────────────────────────────────────────');
+      lines.push('');
+
+      const result = generateKVDiagram(diag, s, { ...opts, mrMap, separateOutputs: true });
+      lines.push(...result.lines);
+      totalSteps += result.stepCount;
+    });
+  });
+
+  // ── Pass 4: Output section organised by device ───────────────────────────
+  lines.push('');
+  lines.push(...cgSectionBanner('OUTPUT — by device'));
+  lines.push('');
+  lines.push(...generateKVOutputSection(loadedDiags, signalActionMap));
 
   lines.push('');
   lines.push('; ── END OF FILE ──────────────────────────────────────────');
@@ -238,6 +314,137 @@ function generateKVAll(diagIds, opts) {
     code: lines.join('\n'),
     stats: `${diagIds.length} diagram(s) · ${totalSteps} step(s) · base @MR${opts.baseMR}`
   };
+}
+
+// ─── Section banner ──────────────────────────────────────────────────────────
+function cgSectionBanner(title) {
+  const inner = `  ${title}  `;
+  const width = 54;
+  const padded = inner.padEnd(width);
+  return [
+    `; ╔${'═'.repeat(width)}╗`,
+    `; ║${padded}║`,
+    `; ╚${'═'.repeat(width)}╝`
+  ];
+}
+
+// ─── Full address resolver (handles dot-notation "Cyl1.Extend_SOL") ──────────
+function cgResolveAddrFull(varOrAddr, vars) {
+  if (!varOrAddr) return null;
+  // Already a PLC address literal
+  if (KV_ADDR_RE.test(varOrAddr)) return varOrAddr;
+  // Dot-notation: DeviceInstance.SignalName
+  if (varOrAddr.includes('.')) {
+    const dotIdx = varOrAddr.indexOf('.');
+    const devLabel = varOrAddr.substring(0, dotIdx);
+    const sigName  = varOrAddr.substring(dotIdx + 1);
+    const v = (vars || []).find(x => x.label === devLabel);
+    if (v && v.signalAddresses) {
+      const devType = (project.devices || []).find(d => d.name === (v.format || ''));
+      const sig = (devType?.signals || []).find(s => s.name === sigName);
+      if (sig) {
+        const addr = v.signalAddresses[sig.id];
+        if (addr) return addr;
+      }
+    }
+    return null;
+  }
+  // Simple label lookup
+  const v = (vars || []).find(x => x.label === varOrAddr);
+  if (v?.address) return v.address;
+  return null;
+}
+
+// ─── Output section: one block per device instance, one sub-block per signal ─
+function generateKVOutputSection(loadedDiags, signalActionMap) {
+  const lines = [];
+
+  // Collect all device-instance vars from all loaded diagrams
+  // devVarMap: varLabel → {devTypeName, signalAddresses, signals}
+  const devVarMap = {};
+  loadedDiags.forEach(({ s }) => {
+    (s.vars || []).forEach(v => {
+      if (!v.signalAddresses || devVarMap[v.label]) return;
+      const devType = (project.devices || []).find(d => d.name === (v.format || ''));
+      if (devType) {
+        devVarMap[v.label] = {
+          devTypeName: devType.name,
+          signalAddresses: v.signalAddresses,
+          signals: devType.signals || []
+        };
+      }
+    });
+  });
+
+  // Find error-flag address (for ANDNOT gate on each output)
+  const anyVars = loadedDiags.flatMap(d => d.s.vars || []);
+  const errorBit = cgFindErrorBit(anyVars);
+
+  // Track which physical addresses have already been emitted
+  const emitted = new Set();
+
+  // ── Device-grouped outputs ──────────────────────────────────────────────
+  Object.entries(devVarMap).forEach(([devLabel, { devTypeName, signalAddresses, signals }]) => {
+    const outputSignals = signals.filter(sig => sig.varType === 'Output');
+    if (!outputSignals.length) return;
+
+    lines.push(`; ─── ${devLabel} [${devTypeName}] ${'─'.repeat(Math.max(2, 44 - devLabel.length - devTypeName.length))}`);
+
+    outputSignals.forEach(sig => {
+      const physAddr = signalAddresses[sig.id];
+      if (!physAddr) {
+        lines.push(`; ${devLabel}.${sig.name} — address not assigned`);
+        lines.push('');
+        return;
+      }
+      emitted.add(physAddr);
+
+      const actions = signalActionMap[physAddr] || [];
+      lines.push(`; ${devLabel}.${sig.name}  →  ${physAddr}${sig.comment ? '  (' + sig.comment + ')' : ''}`);
+
+      if (actions.length) {
+        actions.forEach((a, i) => {
+          const inst = i === 0 ? 'LD  ' : 'OR  ';
+          lines.push(`${inst} ${a.execMR.padEnd(12)}; ${a.mode} / ${cgStepComment(a.stepNum, a.stepLabel)}`);
+        });
+      } else {
+        lines.push(`LD   FALSE         ; TODO: add control conditions`);
+      }
+      if (errorBit) {
+        lines.push(`ANDNOT ${errorBit.padEnd(12)}; not in error`);
+      }
+      lines.push(`OUT  ${physAddr.padEnd(12)}; ${devLabel}.${sig.name}`);
+      lines.push('');
+    });
+  });
+
+  // ── Ungrouped outputs (plain BOOL vars or direct addresses) ────────────
+  const ungroupedAddrs = Object.keys(signalActionMap).filter(addr => !emitted.has(addr));
+  if (ungroupedAddrs.length) {
+    lines.push('; ─── Other outputs ──────────────────────────────────────');
+    ungroupedAddrs.forEach(addr => {
+      const actions = signalActionMap[addr];
+      // Try to find a friendly label from any diagram vars
+      const anyVar = anyVars.find(v => v.address === addr);
+      const labelComment = anyVar?.label ? `  ; ${anyVar.label}` : '';
+
+      lines.push(`; ${addr}${labelComment}`);
+      actions.forEach((a, i) => {
+        const inst = i === 0 ? 'LD  ' : 'OR  ';
+        lines.push(`${inst} ${a.execMR.padEnd(12)}; ${a.mode} / ${cgStepComment(a.stepNum, a.stepLabel)}`);
+      });
+      if (errorBit) {
+        lines.push(`ANDNOT ${errorBit.padEnd(12)}; not in error`);
+      }
+      lines.push(`OUT  ${addr.padEnd(12)}`);
+      lines.push('');
+    });
+  }
+
+  if (!lines.length) {
+    lines.push('; (no output signals found — add device instances to the variable table)');
+  }
+  return lines;
 }
 
 // ─── Single diagram → Keyence KV IL ──────────────────────────────────────────
@@ -257,25 +464,35 @@ function generateKVDiagram(diagMeta, s, opts) {
   // Build ordered sequence: [{step, outTrans, inTrans}]
   const sequence = cgResolveSequence(s);
 
-  // Allocate MR addresses: stepIndex → {exec, done}
-  const mrMap = {}; // stepId → {exec:'@MRxxx', done:'@MRxxx'}
-  sequence.forEach((item, i) => {
-    const base = opts.mrOffset + i * 2;
-    mrMap[item.step.id] = {
-      exec: '@MR' + String(base).padStart(3, '0'),
-      done: '@MR' + String(base + 1).padStart(3, '0')
-    };
-  });
+  // Use pre-allocated mrMap from opts if available (multi-diagram pass),
+  // otherwise allocate locally from opts.mrOffset / opts.baseMR.
+  const mrMap = opts.mrMap || (() => {
+    const map = {};
+    const base0 = opts.mrOffset != null ? opts.mrOffset : (opts.baseMR || 0);
+    sequence.forEach((item, i) => {
+      const base = base0 + i * 2;
+      map[item.step.id] = {
+        exec: '@MR' + String(base).padStart(3, '0'),
+        done: '@MR' + String(base + 1).padStart(3, '0')
+      };
+    });
+    return map;
+  })();
 
-  // Helper: resolve address for a variable name
+  // Helper: resolve address for a variable name (supports dot-notation)
   function resolveAddr(varOrAddr) {
     if (!varOrAddr) return null;
-    // Already looks like an address
-    if (/^[%@]/.test(varOrAddr) || /^[A-Z]{1,3}\d/.test(varOrAddr)) return varOrAddr;
-    // Look up in vars table
+    // Already looks like a PLC address literal
+    if (KV_ADDR_RE.test(varOrAddr)) return varOrAddr;
+    // Dot-notation: DeviceInstance.SignalName
+    if (varOrAddr.includes('.')) {
+      const addr = cgResolveAddrFull(varOrAddr, vars);
+      return addr || varOrAddr;
+    }
+    // Simple label lookup
     const v = vars.find(x => x.label === varOrAddr);
     if (v?.address) return v.address;
-    // Device type instance → skip (no single address)
+    // Device type instance without single address — return as-is
     return varOrAddr;
   }
 
@@ -338,6 +555,17 @@ function generateKVDiagram(diagMeta, s, opts) {
         const addr = resolveAddr(act.address || act.variable);
         if (!addr) return;
         const q = act.qualifier || 'N';
+
+        // When separateOutputs is true, N-qualified outputs that resolve to a
+        // physical address are aggregated in the Output section instead of here.
+        if (q === 'N' && opts.separateOutputs) {
+          const resolved = cgResolveAddrFull(act.address || act.variable, vars) || addr;
+          if (KV_ADDR_RE.test(resolved)) {
+            lines.push(`; [N] ${esc2(act.variable||addr)} → ${resolved}  (see OUTPUT section)`);
+            return;
+          }
+        }
+
         lines.push(`LD   ${mr.exec.padEnd(12)}; Step ${stepNum} active`);
         if (q === 'N')  lines.push(`OUT  ${addr.padEnd(12)}; [N] ${esc2(act.variable||addr)}`);
         if (q === 'S')  lines.push(`SET  ${addr.padEnd(12)}; [S] ${esc2(act.variable||addr)}`);
@@ -456,6 +684,11 @@ function cgStepRef(step) {
   return `S${String(step.number).padStart(2,'0')}${step.label ? ' ' + step.label : ''}`;
 }
 
+// Format a step number+label for use in output-section comments.
+function cgStepComment(stepNum, stepLabel) {
+  return `Step ${String(stepNum).padStart(2, '0')}${stepLabel ? ' ' + stepLabel : ''}`;
+}
+
 function cgFindModeBit(vars) {
   // Heuristic: find the first BOOL var that looks like a mode/auto flag
   const candidates = ['Auto','auto','AUTO','Start','start','Mode','mode','Run','run'];
@@ -467,6 +700,18 @@ function cgFindModeBit(vars) {
   const first = (vars || []).find(x =>
     (x.format || '').toUpperCase() === 'BOOL' && x.address);
   return first?.address || null;
+}
+
+function cgFindErrorBit(vars) {
+  // Heuristic: finds a BOOL var whose label matches common error/fault naming.
+  // If the project uses a different convention (e.g. 'Alarm', 'Emergency'),
+  // add it to the candidates list below or assign the address explicitly.
+  const candidates = ['Error','error','ERROR','Fault','fault','FAULT','Err','err'];
+  for (const name of candidates) {
+    const v = (vars || []).find(x => x.label === name);
+    if (v?.address) return v.address;
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
