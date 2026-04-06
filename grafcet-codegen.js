@@ -266,6 +266,38 @@ const PLC_PROFILES = {
   },
 };
 
+// ─── Device Library ──────────────────────────────────────────────────────────
+// Maps device type name → template configuration for the Output section.
+// Populate via cgLoadDeviceLibrary(config) before generating code, or leave
+// empty to fall back to the built-in LD…OUT default template for every signal.
+//
+// Expected structure (JSON example):
+// {
+//   "Cylinder_Standard": {
+//     "templates": {
+//       "Extend_SOL": "LD ${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT ${physAddr} ; ${devLabel}.${sigName}",
+//       "Retract_SOL": "...",
+//       "default": "..."          // fallback for signals not listed above
+//     },
+//     "manual_logic": "AND MR_ManualMode"   // optional shared manual-mode gate
+//   }
+// }
+let DEVICE_LIBRARY = {};
+
+/**
+ * Load (or replace) the Device Library from an object.
+ * Pass in a plain JS object or a parsed JSON/YAML config.
+ * @param {Object} config
+ */
+function cgLoadDeviceLibrary(config) {
+  if (config && typeof config === 'object' && !Array.isArray(config)) {
+    DEVICE_LIBRARY = config;
+  } else {
+    // Reset to empty on invalid input so stale data is never left in place.
+    DEVICE_LIBRARY = {};
+  }
+}
+
 function generateKVAll(diagIds, opts) {
   const lines = [];
   let totalSteps = 0;
@@ -341,7 +373,10 @@ function generateKVAll(diagIds, opts) {
     lines.push(`; ${'═'.repeat(UNIT_BANNER_WIDTH)}`);
 
     // ── Build signal→action map for this unit's Output section ───────────
-    // Maps physicalAddr → [{execMR, mode, stepNum, stepLabel, varLabel}]
+    // Maps physicalAddr → [{execMR, mode, stepNum, stepLabel, varLabel,
+    //                        devLabel, sigName, devTypeName}]
+    // devLabel/sigName/devTypeName are populated for dot-notation actions
+    // (e.g. "Cyl1.Extend_SOL") to support Template Engine lookups.
     const signalActionMap = {};
     entries.forEach(({ s, mode, sequence, mrMap }) => {
       const vars = s.vars || [];
@@ -351,15 +386,19 @@ function generateKVAll(diagIds, opts) {
         (step.actions || []).forEach(act => {
           if (!act.variable && !act.address) return;
           if ((act.qualifier || 'N') !== 'N') return;
-          const addr = cgResolveAddrFull(act.address || act.variable, vars);
-          if (!addr) return;
-          if (!signalActionMap[addr]) signalActionMap[addr] = [];
-          signalActionMap[addr].push({
+          const info = cgResolveSignalInfo(act.address || act.variable, vars);
+          if (!info?.physAddr) return;
+          const { physAddr, devLabel, sigName, devTypeName } = info;
+          if (!signalActionMap[physAddr]) signalActionMap[physAddr] = [];
+          signalActionMap[physAddr].push({
             execMR: mr.exec,
             mode,
             stepNum: step.number,
             stepLabel: step.label || '',
-            varLabel: act.variable || addr
+            varLabel: act.variable || physAddr,
+            devLabel: devLabel || null,
+            sigName:  sigName  || null,
+            devTypeName: devTypeName || null
           });
         });
       });
@@ -471,12 +510,130 @@ function cgResolveAddrFull(varOrAddr, vars) {
   return null;
 }
 
-// ─── Output section: one block per device instance, one sub-block per signal ─
+// ─── Signal info resolver (forward + device metadata) ────────────────────────
+// Like cgResolveAddrFull but also returns device instance metadata so that the
+// Template Engine can look up the correct template in DEVICE_LIBRARY.
+// Returns: { physAddr, devLabel, sigName, devTypeName } or null.
+function cgResolveSignalInfo(varOrAddr, vars) {
+  if (!varOrAddr) return null;
+  // Already a PLC address literal — no device context
+  if (KV_ADDR_RE.test(varOrAddr)) {
+    return { physAddr: varOrAddr, devLabel: null, sigName: null, devTypeName: null };
+  }
+  // Dot-notation: DeviceInstance.SignalName
+  if (varOrAddr.includes('.')) {
+    const dotIdx   = varOrAddr.indexOf('.');
+    const devLabel = varOrAddr.substring(0, dotIdx);
+    const sigName  = varOrAddr.substring(dotIdx + 1);
+    const v = (vars || []).find(x => x.label === devLabel);
+    if (v && v.signalAddresses) {
+      const devType = (project.devices || []).find(d => d.name === (v.format || ''));
+      const sig     = (devType?.signals || []).find(s => s.name === sigName);
+      if (sig) {
+        const physAddr = v.signalAddresses[sig.id];
+        if (physAddr) {
+          return { physAddr, devLabel, sigName, devTypeName: devType?.name || null };
+        }
+      }
+    }
+    return null;
+  }
+  // Simple label lookup (plain BOOL var with .address)
+  const v = (vars || []).find(x => x.label === varOrAddr);
+  if (v?.address) {
+    return { physAddr: v.address, devLabel: null, sigName: null, devTypeName: null };
+  }
+  return null;
+}
+
+// ─── Reverse lookup: physAddr → device instance info ─────────────────────────
+// Searches all vars for a device instance whose signalAddresses contains addr.
+// Returns: { devLabel, sigName, devTypeName } or null.
+function cgFindDeviceByAddr(physAddr, vars) {
+  for (const v of (vars || [])) {
+    if (!v.signalAddresses) continue;
+    const devType = (project.devices || []).find(d => d.name === (v.format || ''));
+    if (!devType) continue;
+    for (const sig of (devType.signals || [])) {
+      if (v.signalAddresses[sig.id] === physAddr) {
+        return { devLabel: v.label, sigName: sig.name, devTypeName: devType.name };
+      }
+    }
+  }
+  return null;
+}
+
+// ─── Template Engine helpers ──────────────────────────────────────────────────
+
+/**
+ * Build the LD / OR ladder block for one physical output.
+ * Each entry in `actions` represents one GRAFCET step that activates the signal.
+ * @param  {Array}  actions  [{execMR, mode, stepNum, stepLabel}, …]
+ * @returns {string}         Multi-line IL block ready for ${execMR} substitution.
+ */
+function cgBuildExecMRBlock(actions) {
+  if (!actions.length) return '';
+  return actions.map((a, i) => {
+    const inst = i === 0 ? 'LD  ' : 'OR  ';
+    return `${inst} ${a.execMR.padEnd(12)}; ${a.mode} / ${cgStepComment(a.stepNum, a.stepLabel)}`;
+  }).join('\n');
+}
+
+/**
+ * Apply a template string, replacing ${key} placeholders with values from
+ * `vars`.  Lines where ANY placeholder resolved to an empty string are
+ * silently dropped so that optional clauses (ANDNOT ${interlock},
+ * ${manual_logic}, …) disappear cleanly when no value is provided.
+ *
+ * Multi-line values (e.g. ${execMR} with several LD/OR rows) are inlined
+ * correctly because substitution is done on the full string before splitting.
+ *
+ * @param  {string} template  Template text with ${key} markers.
+ * @param  {Object} vars      Key → replacement string.
+ * @returns {string}
+ */
+function cgApplyOutputTemplate(template, vars) {
+  return template.split('\n').map(line => {
+    let hasEmpty = false;
+    const substituted = line.replace(/\$\{(\w+)\}/g, (_, key) => {
+      // Treat null, undefined, false, 0, and '' all as "empty" so that lines
+      // such as "ANDNOT ${interlock}" are dropped cleanly when no value is set.
+      const raw = vars[key];
+      const val = (raw != null && raw !== false && raw !== 0) ? String(raw) : '';
+      if (val === '') hasEmpty = true;
+      return val;
+    });
+    // Drop the line if any placeholder resolved to empty (makes optional
+    // clauses like "ANDNOT ${interlock}" disappear when there is no interlock).
+    return hasEmpty ? null : substituted;
+  }).filter(line => line !== null).join('\n');
+}
+
+// ─── Output section: 4-phase pipeline (Setup→Analysis→Mapping→Generation) ────
 function generateKVOutputSection(loadedDiags, signalActionMap) {
   const lines = [];
 
-  // Collect all device-instance vars from all loaded diagrams
-  // devVarMap: varLabel → {devTypeName, signalAddresses, signals}
+  // ══ Phase 1 — Setup ══════════════════════════════════════════════════════
+  // Default output template used when no DEVICE_LIBRARY entry is found.
+  // Lines whose ${…} placeholder resolves to empty are dropped automatically
+  // by cgApplyOutputTemplate, so optional clauses (ANDNOT ${interlock},
+  // ${manual_logic}) vanish cleanly when no value is configured.
+  const DEFAULT_OUTPUT_TEMPLATE =
+    '${execMR}\n' +
+    'ANDNOT ${interlock}\n' +
+    '${manual_logic}\n' +
+    'OUT  ${physAddr}';
+
+  // Same template with a device-signal comment on the OUT line.
+  const DEFAULT_OUTPUT_TEMPLATE_DEVICE =
+    '${execMR}\n' +
+    'ANDNOT ${interlock}\n' +
+    '${manual_logic}\n' +
+    'OUT  ${physAddr}               ; ${devLabel}.${sigName}';
+
+  // ══ Phase 2 — Analysis ═══════════════════════════════════════════════════
+  // Collect all device-instance vars from all loaded diagrams.
+  // devVarMap: devLabel → {devTypeName, signalAddresses, signals}
   const devVarMap = {};
   loadedDiags.forEach(({ s }) => {
     (s.vars || []).forEach(v => {
@@ -492,14 +649,21 @@ function generateKVOutputSection(loadedDiags, signalActionMap) {
     });
   });
 
-  // Find error-flag address (for ANDNOT gate on each output)
+  // Shared vars list used for reverse-lookup fallback (ungrouped outputs).
   const anyVars = loadedDiags.flatMap(d => d.s.vars || []);
+
+  // Error/fault interlock bit — inserted into every output block.
   const errorBit = cgFindErrorBit(anyVars);
 
-  // Track which physical addresses have already been emitted
+  // ══ Phase 3 — Mapping ════════════════════════════════════════════════════
+  // Track emitted physical addresses to guarantee each coil appears only once
+  // (Double Coil prevention).  Device-grouped outputs are emitted first; any
+  // remaining addresses in signalActionMap are emitted as "Other outputs".
   const emitted = new Set();
 
-  // ── Device-grouped outputs ──────────────────────────────────────────────
+  // ══ Phase 4 — Generation ═════════════════════════════════════════════════
+
+  // ── Device-grouped outputs ───────────────────────────────────────────────
   Object.entries(devVarMap).forEach(([devLabel, { devTypeName, signalAddresses, signals }]) => {
     const outputSignals = signals.filter(sig => sig.varType === 'Output');
     if (!outputSignals.length) return;
@@ -513,46 +677,78 @@ function generateKVOutputSection(loadedDiags, signalActionMap) {
         lines.push('');
         return;
       }
+
+      // ── Double Coil guard ────────────────────────────────────────────────
       emitted.add(physAddr);
 
       const actions = signalActionMap[physAddr] || [];
       lines.push(`; ${devLabel}.${sig.name}  →  ${physAddr}${sig.comment ? '  (' + sig.comment + ')' : ''}`);
 
+      // ── Template lookup (DEVICE_LIBRARY → signal name → "default") ───────
+      const devConfig = DEVICE_LIBRARY[devTypeName];
+      const template  =
+        devConfig?.templates?.[sig.name] ||
+        devConfig?.templates?.default    ||
+        DEFAULT_OUTPUT_TEMPLATE_DEVICE;
+
+      // ── Build template variable map ───────────────────────────────────────
+      const execMRBlock = cgBuildExecMRBlock(actions);
+      const templateVars = {
+        execMR:       execMRBlock,
+        physAddr,
+        interlock:    errorBit              || '',
+        manual_logic: devConfig?.manual_logic || '',
+        devLabel,
+        sigName:      sig.name,
+        mode:         actions[0]?.mode      || ''
+      };
+
       if (actions.length) {
-        actions.forEach((a, i) => {
-          const inst = i === 0 ? 'LD  ' : 'OR  ';
-          lines.push(`${inst} ${a.execMR.padEnd(12)}; ${a.mode} / ${cgStepComment(a.stepNum, a.stepLabel)}`);
-        });
+        const rendered = cgApplyOutputTemplate(template, templateVars);
+        rendered.split('\n').forEach(l => lines.push(l));
       } else {
-        lines.push(`LD   FALSE         ; TODO: add control conditions`);
+        // No GRAFCET steps activate this signal yet.
+        // Use the template engine with a TODO stub as the execMR block so the
+        // output format stays consistent with the templated path above.
+        const stubVars = Object.assign({}, templateVars, {
+          execMR: `LD   FALSE         ; TODO: add control conditions for ${devLabel}.${sig.name}`
+        });
+        const rendered = cgApplyOutputTemplate(template, stubVars);
+        rendered.split('\n').forEach(l => lines.push(l));
       }
-      if (errorBit) {
-        lines.push(`ANDNOT ${errorBit.padEnd(12)}; not in error`);
-      }
-      lines.push(`OUT  ${physAddr.padEnd(12)}; ${devLabel}.${sig.name}`);
       lines.push('');
     });
   });
 
-  // ── Ungrouped outputs (plain BOOL vars or direct addresses) ────────────
+  // ── Ungrouped outputs (plain BOOL vars or direct-address actions) ─────────
   const ungroupedAddrs = Object.keys(signalActionMap).filter(addr => !emitted.has(addr));
   if (ungroupedAddrs.length) {
     lines.push('; ─── Other outputs ──────────────────────────────────────');
     ungroupedAddrs.forEach(addr => {
       const actions = signalActionMap[addr];
-      // Try to find a friendly label from any diagram vars
-      const anyVar = anyVars.find(v => v.address === addr);
-      const labelComment = anyVar?.label ? `  ; ${anyVar.label}` : '';
+      // Try to find a friendly label via reverse lookup.
+      const devInfo    = cgFindDeviceByAddr(addr, anyVars);
+      const anyVar     = anyVars.find(v => v.address === addr);
+      const labelHint  = devInfo
+        ? `${devInfo.devLabel}.${devInfo.sigName}`
+        : (anyVar?.label || '');
+      const labelComment = labelHint ? `  ; ${labelHint}` : '';
 
       lines.push(`; ${addr}${labelComment}`);
-      actions.forEach((a, i) => {
-        const inst = i === 0 ? 'LD  ' : 'OR  ';
-        lines.push(`${inst} ${a.execMR.padEnd(12)}; ${a.mode} / ${cgStepComment(a.stepNum, a.stepLabel)}`);
-      });
-      if (errorBit) {
-        lines.push(`ANDNOT ${errorBit.padEnd(12)}; not in error`);
-      }
-      lines.push(`OUT  ${addr.padEnd(12)}`);
+
+      const execMRBlock = cgBuildExecMRBlock(actions);
+      const templateVars = {
+        execMR:    execMRBlock,
+        physAddr:  addr,
+        interlock: errorBit || '',
+        // No device context — optional device placeholders left empty so their
+        // template lines are skipped by cgApplyOutputTemplate.
+        manual_logic: '',
+        devLabel:     '',
+        sigName:      ''
+      };
+      const rendered = cgApplyOutputTemplate(DEFAULT_OUTPUT_TEMPLATE, templateVars);
+      rendered.split('\n').forEach(l => lines.push(l));
       lines.push('');
     });
   }
