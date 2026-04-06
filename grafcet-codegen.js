@@ -36,19 +36,20 @@ function showGenerateCodeModal() {
       <div style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;
         gap:20px;align-items:flex-end;flex-wrap:wrap;flex-shrink:0;background:var(--s2);">
 
-        <!-- Target language -->
+        <!-- Target PLC -->
         <div>
-          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">TARGET</div>
-          <div style="display:flex;gap:6px;">
-            <label class="cg-radio-lbl" id="cg-lbl-kv">
-              <input type="radio" name="cg-target" value="kv" checked onchange="cgUpdatePreview()">
-              <span>Keyence KV IL</span>
-            </label>
-            <label class="cg-radio-lbl" id="cg-lbl-st" style="opacity:.5;" title="Coming soon">
-              <input type="radio" name="cg-target" value="st" onchange="cgUpdatePreview()">
-              <span>IEC ST <span style="font-size:8px;color:var(--amber);">[demo]</span></span>
-            </label>
-          </div>
+          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">TARGET PLC</div>
+          <select id="cg-target" onchange="cgUpdatePreview()"
+            style="background:var(--bg);border:1px solid var(--border);color:var(--cyan);
+            font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;
+            border-radius:3px;outline:none;">
+            <option value="kv-5500">🔵 Keyence KV-5500 / 5000 / 3000</option>
+            <option value="kv-8000">🔵 Keyence KV-8000 / 7500</option>
+            <option value="melsec">🟠 Mitsubishi MELSEC iQ-R / F / L</option>
+            <option value="omron">🟢 Omron CJ / CS / NJ / NX</option>
+            <option value="siemens">🟡 Siemens S7-1200 / 1500 (AWL)</option>
+            <option value="st">⬜ IEC 61131-3 ST [demo]</option>
+          </select>
         </div>
 
         <!-- Base MR address -->
@@ -126,7 +127,7 @@ function cgSelectAll(val) {
 
 // ─── Live preview ─────────────────────────────────────────────────────────────
 function cgUpdatePreview() {
-  const target = document.querySelector('input[name="cg-target"]:checked')?.value || 'kv';
+  const target = document.getElementById('cg-target')?.value || 'kv-5500';
   const baseMR = parseInt(document.getElementById('cg-base-mr')?.value || '100', 10);
   const selected = Array.from(
     document.querySelectorAll('#cg-diag-list input[type=checkbox]:checked')
@@ -142,18 +143,23 @@ function cgUpdatePreview() {
     return;
   }
 
-  const result = target === 'kv'
-    ? generateKVAll(selected, { baseMR })
+  const profile = PLC_PROFILES[target];
+  const result = profile
+    ? generateKVAll(selected, { baseMR, profile })
     : generateSTDemo(selected, { baseMR });
 
   pre.textContent = result.code;
   if (stat) stat.textContent = result.stats;
 
-  // Syntax highlight pass (minimal — colorize comments)
+  // Syntax highlight pass (minimal — colorize comments and instructions)
+  const commentPfx = profile ? profile.comment : ';';
+  const commentRe = commentPfx === '//'
+    ? /^(\/\/.*)$/gm
+    : /^(;.*)$/gm;
   pre.innerHTML = pre.textContent
     .replace(/(&amp;|&lt;|&gt;)/g, s => s) // already escaped? no — textContent is safe
-    .replace(/^(;.*)$/gm, '<span style="color:var(--text3)">$1</span>')
-    .replace(/\b(LD|AND|OR|SET|RST|OUT|ANB|ORB|LDNOT|ANDNOT|ORNOT|MPS|MRD|MPP)\b/g,
+    .replace(commentRe, '<span style="color:var(--text3)">$1</span>')
+    .replace(/\b(LD|LDI|LD NOT|AND|ANI|AND NOT|AND LD|OR|ORI|OR NOT|OR LD|SET|RST|RSET|OUT|ANB|ORB|LDNOT|ANDNOT|ORNOT|MPS|MRD|MPP|ULD|OLD|TMRON|ONDL|TIM|TMRA|S\b|R\b|U\b|UN\b|O\b|ON\b|=\b)\b/g,
       '<span style="color:var(--cyan)">$1</span>')
     .replace(/@MR\d+/g, '<span style="color:var(--amber)">$&</span>')
     .replace(/\bMR\d+\b/g, '<span style="color:#4ade80">$&</span>');
@@ -161,18 +167,19 @@ function cgUpdatePreview() {
 
 // ─── Download / Copy ──────────────────────────────────────────────────────────
 function cgDownloadCode() {
-  const target = document.querySelector('input[name="cg-target"]:checked')?.value || 'kv';
+  const target = document.getElementById('cg-target')?.value || 'kv-5500';
   const baseMR = parseInt(document.getElementById('cg-base-mr')?.value || '100', 10);
   const selected = Array.from(
     document.querySelectorAll('#cg-diag-list input[type=checkbox]:checked')
   ).map(c => c.value);
   if (!selected.length) { toast('⚠ No diagrams selected'); return; }
 
-  const result = target === 'kv'
-    ? generateKVAll(selected, { baseMR })
+  const profile = PLC_PROFILES[target];
+  const result = profile
+    ? generateKVAll(selected, { baseMR, profile })
     : generateSTDemo(selected, { baseMR });
 
-  const ext = target === 'kv' ? '.mnm' : '.st';
+  const ext = profile ? (profile.fileExt || '.mnm') : '.st';
   const safe = (project.name || 'grafcet').replace(/\s+/g, '_');
   const blob = new Blob([result.code], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
@@ -199,14 +206,68 @@ const KV_SECTION_ORDER = ['Error', 'Manual', 'Origin', 'Auto'];
 // Matches Keyence KV / IEC address literals such as Y0.00, @MR100, %QX0.0
 const KV_ADDR_RE = /^[%@]|^[A-Z]{1,3}\d/;
 
+// ─── PLC Target Profiles ──────────────────────────────────────────────────────
+// Each profile maps the KV-5500 instruction set to a target PLC.
+// 'kv-5500' is the native format (no translation needed).
+// timerFn(ms, timerAddr) returns the on-delay timer instruction string.
+const PLC_PROFILES = {
+  'kv-5500': {
+    label: 'Keyence KV-5500 / 5000 / 3000',
+    fileExt: '.mnm',
+    comment: ';',
+    LD: 'LD', LDNOT: 'LDNOT', AND: 'AND', ANDNOT: 'ANDNOT',
+    OR: 'OR', ORNOT: 'ORNOT', ANB: 'ANB', ORB: 'ORB',
+    SET: 'SET', RST: 'RST', OUT: 'OUT',
+    timerFn: (ms, addr) => `ONDL #${ms} ${addr}`,
+  },
+  'kv-8000': {
+    label: 'Keyence KV-8000 / 7500',
+    fileExt: '.mnm',
+    comment: ';',
+    LD: 'LD', LDNOT: 'LDNOT', AND: 'AND', ANDNOT: 'ANDNOT',
+    OR: 'OR', ORNOT: 'ORNOT', ANB: 'ANB', ORB: 'ORB',
+    SET: 'SET', RST: 'RST', OUT: 'OUT',
+    timerFn: (ms, addr) => `TMRON ${addr} #${ms}`,
+  },
+  'melsec': {
+    label: 'Mitsubishi MELSEC iQ-R / F / L',
+    fileExt: '.gxw',
+    comment: '//',
+    LD: 'LD', LDNOT: 'LDI', AND: 'AND', ANDNOT: 'ANI',
+    OR: 'OR', ORNOT: 'ORI', ANB: 'ANB', ORB: 'ORB',
+    SET: 'SET', RST: 'RST', OUT: 'OUT',
+    timerFn: (ms, addr) => `OUT  ${addr} K${Math.round(ms / 100)}`,
+  },
+  'omron': {
+    label: 'Omron CJ / CS / NJ / NX',
+    fileExt: '.cxp',
+    comment: '//',
+    LD: 'LD', LDNOT: 'LD NOT', AND: 'AND', ANDNOT: 'AND NOT',
+    OR: 'OR', ORNOT: 'OR NOT', ANB: 'AND LD', ORB: 'OR LD',
+    SET: 'SET', RST: 'RSET', OUT: 'OUT',
+    timerFn: (ms, addr) => `TIM  ${addr} #${Math.round(ms / 10)}`,
+  },
+  'siemens': {
+    label: 'Siemens S7-1200 / 1500 (AWL/STL)',
+    fileExt: '.awl',
+    comment: '//',
+    LD: 'U', LDNOT: 'UN', AND: 'U', ANDNOT: 'UN',
+    OR: 'O', ORNOT: 'ON', ANB: 'ULD', ORB: 'OLD',
+    SET: 'S', RST: 'R', OUT: '=',
+    timerFn: (ms, addr) => `L   S5T#${ms}MS\nSD  ${addr}`,
+  },
+};
+
 function generateKVAll(diagIds, opts) {
   const lines = [];
   let totalSteps = 0;
   const timestamp = new Date().toLocaleString('vi-VN');
+  const profile = opts.profile || PLC_PROFILES['kv-5500'];
 
   // ── File header ─────────────────────────────────────────────────────────
+  const targetLabel = profile.label.padEnd(41);
   lines.push('; ╔══════════════════════════════════════════════════════╗');
-  lines.push('; ║  GRAFCET Studio — Keyence KV Mnemonic IL             ║');
+  lines.push(`; ║  GRAFCET Studio — ${targetLabel}║`);
   lines.push(`; ║  Project : ${(project.name || '').padEnd(42)}║`);
   lines.push(`; ║  Generated: ${timestamp.padEnd(41)}║`);
   lines.push('; ╚══════════════════════════════════════════════════════╝');
@@ -295,7 +356,7 @@ function generateKVAll(diagIds, opts) {
       lines.push('; └──────────────────────────────────────────────────────');
       lines.push('');
 
-      const result = generateKVDiagram(diag, s, { ...opts, mrMap, separateOutputs: true });
+      const result = generateKVDiagram(diag, s, { ...opts, mrMap, separateOutputs: true, profile });
       lines.push(...result.lines);
       totalSteps += result.stepCount;
     });
@@ -310,9 +371,10 @@ function generateKVAll(diagIds, opts) {
   lines.push('');
   lines.push('; ── END OF FILE ──────────────────────────────────────────');
 
+  const rawCode = lines.join('\n');
   return {
-    code: lines.join('\n'),
-    stats: `${diagIds.length} diagram(s) · ${totalSteps} step(s) · base @MR${opts.baseMR}`
+    code: cgApplyProfile(rawCode, profile),
+    stats: `${diagIds.length} diagram(s) · ${totalSteps} step(s) · base @MR${opts.baseMR} · ${profile.label}`
   };
 }
 
@@ -573,8 +635,12 @@ function generateKVDiagram(diagMeta, s, opts) {
         if (q === 'P')  { lines.push(`ANDNOT ${(addr+'_prev').padEnd(8)}; [P] rising edge`); lines.push(`OUT  ${addr.padEnd(12)}`); }
         if (q === 'P0') { lines.push(`ANDNOT ${addr.padEnd(8)}; [P0] falling edge`); lines.push(`OUT  ${(addr+'_p0').padEnd(12)}`); }
         if (q === 'L' || q === 'D' || q === 'SD' || q === 'DS' || q === 'SL') {
+          const timerProfile = opts.profile || PLC_PROFILES['kv-5500'];
+          // Extract numeric milliseconds from formats like 't#500ms', '500', 'T#1500MS'
+          const timeMs = parseFloat((act.time || '0').match(/[\d.]+/)?.[0] || '0') || 0;
+          const timerAddr = `T${String(idx).padStart(3,'0')}`;
           lines.push(`; [${q}] time-limited action — timer ${act.time||'?'}`);
-          lines.push(`TIM  T${String(idx).padStart(3,'0')}  ${(act.time||'0').replace(/t#/i,'').replace(/ms/,'')}`);
+          lines.push(timerProfile.timerFn(timeMs, timerAddr));
           lines.push(`OUT  ${addr.padEnd(12)}`);
         }
       });
@@ -712,6 +778,48 @@ function cgFindErrorBit(vars) {
     if (v?.address) return v.address;
   }
   return null;
+}
+
+// ─── Profile translation: converts KV-5500 IL output to the target PLC format ─
+// All code is generated in KV-5500 format first, then post-processed here.
+// The timer instruction is handled at generation time via profile.timerFn.
+function cgApplyProfile(code, profile) {
+  if (!profile || profile === PLC_PROFILES['kv-5500']) return code;
+  const base = PLC_PROFILES['kv-5500'];
+
+  // Build replacement pairs ordered longest-first to prevent partial matches
+  // (e.g. ANDNOT must be replaced before AND).
+  const instrPairs = [
+    [base.ANDNOT, profile.ANDNOT],
+    [base.LDNOT,  profile.LDNOT],
+    [base.ORNOT,  profile.ORNOT],
+    [base.ANB,    profile.ANB],
+    [base.ORB,    profile.ORB],
+    [base.AND,    profile.AND],
+    [base.OR,     profile.OR],
+    [base.LD,     profile.LD],
+    [base.SET,    profile.SET],
+    [base.RST,    profile.RST],
+    [base.OUT,    profile.OUT],
+  ];
+
+  return code.split('\n').map(line => {
+    // Translate comment prefix ';' → '//'
+    if (profile.comment !== ';' && /^\s*;/.test(line)) {
+      return line.replace(/^(\s*);/, `$1${profile.comment}`);
+    }
+    // Replace instruction mnemonic at the start of the line
+    const indent = (line.match(/^(\s*)/) || ['',''])[1];
+    const rest = line.trimStart();
+    for (const [kvInstr, targetInstr] of instrPairs) {
+      // Match if line starts with the instruction followed by whitespace or EOL
+      if (rest.startsWith(kvInstr) &&
+          (rest.length === kvInstr.length || /\s/.test(rest[kvInstr.length]))) {
+        return indent + targetInstr + rest.slice(kvInstr.length);
+      }
+    }
+    return line;
+  }).join('\n');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
