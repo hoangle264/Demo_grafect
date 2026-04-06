@@ -156,8 +156,13 @@ function cgUpdatePreview() {
   const commentRe = commentPfx === '//'
     ? /^(\/\/.*)$/gm
     : /^(;.*)$/gm;
-  pre.innerHTML = pre.textContent
-    .replace(/(&amp;|&lt;|&gt;)/g, s => s) // already escaped? no — textContent is safe
+  // HTML-escape raw text before injecting into innerHTML so that ;<h1> bookmark
+  // markers (which contain < and >) are not parsed as HTML tags.
+  const escaped = pre.textContent.replace(/[&<>]/g, c =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;');
+  pre.innerHTML = escaped
+    // ;<h1> bookmarks — highlight as section headings (match the escaped form)
+    .replace(/^(;&lt;h1&gt;.*)$/gm, '<span style="color:var(--amber);font-weight:bold">$1</span>')
     .replace(commentRe, '<span style="color:var(--text3)">$1</span>')
     .replace(/\b(LD|LDI|LD NOT|AND|ANI|AND NOT|AND LD|OR|ORI|OR NOT|OR LD|SET|RST|RSET|OUT|ANB|ORB|LDNOT|ANDNOT|ORNOT|MPS|MRD|MPP|ULD|OLD|TMRON|ONDL|TIM|TMRA|S\b|R\b|U\b|UN\b|O\b|ON\b|=\b)\b/g,
       '<span style="color:var(--cyan)">$1</span>')
@@ -202,6 +207,9 @@ function cgCopyCode() {
 // Section order for the generated file: Error → Manual → Origin → Auto → Output
 // '_other' covers any mode name that does not match the four standard modes.
 const KV_SECTION_ORDER = ['Error', 'Manual', 'Origin', 'Auto'];
+
+// Width of the unit banner separator line (number of ═ characters).
+const UNIT_BANNER_WIDTH = 56;
 
 // Matches Keyence KV / IEC address literals such as Y0.00, @MR100, %QX0.0
 const KV_ADDR_RE = /^[%@]|^[A-Z]{1,3}\d/;
@@ -273,13 +281,15 @@ function generateKVAll(diagIds, opts) {
   lines.push('; ╚══════════════════════════════════════════════════════╝');
   lines.push('');
 
-  // ── Pass 1: load all diagrams, allocate MR, group by mode ───────────────
-  const sections = {};
-  KV_SECTION_ORDER.forEach(m => { sections[m] = []; });
-  sections['_other'] = [];
-
-  const loadedDiags = [];
+  // ── Pass 1: load all diagrams, allocate MR addresses, group by unit ─────
+  // MR address allocation is global (continuous) across all units so that
+  // addresses never overlap even when units are edited independently.
   let mrOffset = opts.baseMR;
+
+  // unitDiagMap: unitId → entry[]
+  // orphanEntries: diagrams that have no unitId
+  const unitDiagMap = {};
+  const orphanEntries = [];
 
   diagIds.forEach(diagId => {
     const diag = (project.diagrams || []).find(d => d.id === diagId);
@@ -289,7 +299,9 @@ function generateKVAll(diagIds, opts) {
     const s = data.state;
     const mode = diag.mode || 'Auto';
 
-    // Build sequence and pre-allocate MR addresses for this diagram
+    // Build sequence and pre-allocate MR addresses for this diagram.
+    // Each step needs 2 MR bits (exec + done).  The trailing +2 leaves a gap
+    // between diagrams to simplify manual editing in KV Studio.
     const sequence = cgResolveSequence(s);
     const mrMap = {};
     sequence.forEach((item, i) => {
@@ -300,73 +312,115 @@ function generateKVAll(diagIds, opts) {
       };
     });
     mrOffset += Math.max(sequence.length * 2, 2) + 2;
-    // Each step needs 2 MR bits (exec + done).  The trailing +2 leaves a gap
-    // between diagrams to simplify manual editing in KV Studio.
 
     const entry = { diag, s, mode, sequence, mrMap };
-    loadedDiags.push(entry);
-    const key = KV_SECTION_ORDER.includes(mode) ? mode : '_other';
-    sections[key].push(entry);
+    const uid = diag.unitId || '_none';
+    if (uid === '_none') {
+      orphanEntries.push(entry);
+    } else {
+      if (!unitDiagMap[uid]) unitDiagMap[uid] = [];
+      unitDiagMap[uid].push(entry);
+    }
   });
 
-  // ── Pass 2: build signal→action map for Output section ──────────────────
-  // Maps physicalAddr → [{execMR, mode, stepNum, stepLabel, varLabel}]
-  // Only N-qualified actions are aggregated here (they drive outputs by step state).
-  const signalActionMap = {};
-  loadedDiags.forEach(({ s, mode, sequence, mrMap }) => {
-    const vars = s.vars || [];
-    sequence.forEach(({ step }) => {
-      const mr = mrMap[step.id];
-      if (!mr) return;
-      (step.actions || []).forEach(act => {
-        if (!act.variable && !act.address) return;
-        if ((act.qualifier || 'N') !== 'N') return;
-        const addr = cgResolveAddrFull(act.address || act.variable, vars);
-        if (!addr) return;
-        if (!signalActionMap[addr]) signalActionMap[addr] = [];
-        signalActionMap[addr].push({
-          execMR: mr.exec,
-          mode,
-          stepNum: step.number,
-          stepLabel: step.label || '',
-          varLabel: act.variable || addr
+  // ── Pass 2: emit code grouped by unit ───────────────────────────────────
+  // Within each unit the code is organised into ;<h1> bookmark sections:
+  //   ;<h1>Error   — all Error-mode diagrams
+  //   ;<h1>Manual  — all Manual-mode diagrams
+  //   ;<h1>Origin  — all Origin-mode diagrams
+  //   ;<h1><diagram name>  — one bookmark per Auto-mode diagram (and other modes)
+  //   ;<h1>Output  — device output logic aggregated from all diagrams in the unit
+
+  function emitUnit(unitName, entries) {
+    if (!entries.length) return;
+
+    // ── Unit header ────────────────────────────────────────────────────────
+    lines.push('');
+    lines.push(`; ${'═'.repeat(UNIT_BANNER_WIDTH)}`);
+    lines.push(`; Unit: ${unitName}`);
+    lines.push(`; ${'═'.repeat(UNIT_BANNER_WIDTH)}`);
+
+    // ── Build signal→action map for this unit's Output section ───────────
+    // Maps physicalAddr → [{execMR, mode, stepNum, stepLabel, varLabel}]
+    const signalActionMap = {};
+    entries.forEach(({ s, mode, sequence, mrMap }) => {
+      const vars = s.vars || [];
+      sequence.forEach(({ step }) => {
+        const mr = mrMap[step.id];
+        if (!mr) return;
+        (step.actions || []).forEach(act => {
+          if (!act.variable && !act.address) return;
+          if ((act.qualifier || 'N') !== 'N') return;
+          const addr = cgResolveAddrFull(act.address || act.variable, vars);
+          if (!addr) return;
+          if (!signalActionMap[addr]) signalActionMap[addr] = [];
+          signalActionMap[addr].push({
+            execMR: mr.exec,
+            mode,
+            stepNum: step.number,
+            stepLabel: step.label || '',
+            varLabel: act.variable || addr
+          });
         });
       });
     });
-  });
 
-  // ── Pass 3: generate code for each section ──────────────────────────────
-  [...KV_SECTION_ORDER, '_other'].forEach(mode => {
-    const diagsInSection = sections[mode];
-    if (!diagsInSection.length) return;
+    // ── Emit Error, Manual, Origin sections (one ;<h1> per mode) ─────────
+    ['Error', 'Manual', 'Origin'].forEach(sectionMode => {
+      const sectionEntries = entries.filter(e => e.mode === sectionMode);
+      if (!sectionEntries.length) return;
 
-    const sectionTitle = mode === '_other' ? 'OTHER' : mode.toUpperCase();
-    lines.push('');
-    lines.push(...cgSectionBanner(sectionTitle));
+      lines.push('');
+      lines.push(`;<h1>${sectionMode}`);
 
-    diagsInSection.forEach(({ diag, s, mode: m, sequence, mrMap }) => {
-      const unitName = (project.units || []).find(u => u.id === diag.unitId)?.name || diag.unit || '';
-      const diagLabel = (unitName ? unitName + ' / ' : '') + (diag.name || diag.id);
+      sectionEntries.forEach(({ diag, s, sequence, mrMap }) => {
+        const firstMR = sequence.length ? mrMap[sequence[0].step.id]?.exec : '?';
+        lines.push('');
+        lines.push(`; ─── ${diag.name || diag.id}  (base @MR: ${firstMR}) ${'─'.repeat(12)}`);
+        lines.push('');
+        const result = generateKVDiagram(diag, s, { ...opts, mrMap, separateOutputs: true, profile });
+        lines.push(...result.lines);
+        totalSteps += result.stepCount;
+      });
+    });
+
+    // ── Emit Auto-mode diagrams — one ;<h1><name> bookmark each ──────────
+    // Additional non-standard modes (not Error/Manual/Origin/Auto) are also
+    // placed here, each under their own ;<h1><diagram name> bookmark.
+    const nonStandardModes = new Set(['Error', 'Manual', 'Origin']);
+    const autoAndOther = entries.filter(e => !nonStandardModes.has(e.mode));
+    autoAndOther.forEach(({ diag, s, mode, sequence, mrMap }) => {
+      const bookmarkTitle = diag.name || mode;
       const firstMR = sequence.length ? mrMap[sequence[0].step.id]?.exec : '?';
 
       lines.push('');
-      lines.push('; ┌──────────────────────────────────────────────────────');
-      lines.push(`; │  ${diagLabel}`);
-      lines.push(`; │  Mode: ${m}  |  Base @MR: ${firstMR}`);
-      lines.push('; └──────────────────────────────────────────────────────');
+      lines.push(`;<h1>${bookmarkTitle}`);
+      lines.push('');
+      lines.push(`; Mode: ${mode}  |  Base @MR: ${firstMR}`);
       lines.push('');
 
       const result = generateKVDiagram(diag, s, { ...opts, mrMap, separateOutputs: true, profile });
       lines.push(...result.lines);
       totalSteps += result.stepCount;
     });
+
+    // ── Output section for this unit ──────────────────────────────────────
+    lines.push('');
+    lines.push(';<h1>Output');
+    lines.push('');
+    lines.push(...generateKVOutputSection(entries, signalActionMap));
+  }
+
+  // Emit units in project order
+  (project.units || []).forEach(unit => {
+    const entries = unitDiagMap[unit.id] || [];
+    if (entries.length) emitUnit(unit.name, entries);
   });
 
-  // ── Pass 4: Output section organised by device ───────────────────────────
-  lines.push('');
-  lines.push(...cgSectionBanner('OUTPUT — by device'));
-  lines.push('');
-  lines.push(...generateKVOutputSection(loadedDiags, signalActionMap));
+  // Emit orphan diagrams (no unit assigned)
+  if (orphanEntries.length) {
+    emitUnit('(No Unit)', orphanEntries);
+  }
 
   lines.push('');
   lines.push('; ── END OF FILE ──────────────────────────────────────────');
@@ -804,6 +858,9 @@ function cgApplyProfile(code, profile) {
   ];
 
   return code.split('\n').map(line => {
+    // ;<h1> bookmark lines are KV Studio-specific markers — keep them as-is
+    // (they are not valid IL instructions and not standard comments).
+    if (/^;<h1>/.test(line)) return line;
     // Translate comment prefix ';' → '//'
     if (profile.comment !== ';' && /^\s*;/.test(line)) {
       return line.replace(/^(\s*);/, `$1${profile.comment}`);
