@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GRAFCET Studio — IEC 60848</title>
-<link rel="stylesheet" href="grafcet-studio-v2.css">
+<link rel="stylesheet" href="css/grafcet-studio.css">
 </head>
 <body>
 
@@ -564,12 +564,24 @@
 </div>
 
 
-<!-- Modules (must load before main scripts) -->
-<script src="src/js/modules/utils.js"></script>
-<script src="src/js/modules/graph-utils.js"></script>
-<script src="src/js/modules/store.js"></script>
-<!-- Main application files -->
-<script src="grafcet-studio-v2.js"></script>
-<script src="grafcet-codegen.js"></script>
+<script src="js/core/utils.js"></script>
+<script src="js/core/graph-utils.js"></script>
+<script src="js/core/store.js"></script>
+<script src="js/core/constants.js"></script>
+<script src="js/editor/actions.js"></script>
+<script src="js/editor/panels.js"></script>
+<script src="js/editor/canvas.js"></script>
+<script src="js/editor/elements.js"></script>
+<script src="js/editor/events.js"></script>
+<script src="js/editor/tree.js"></script>
+<script src="js/editor/project.js"></script>
+<script src="js/editor/export.js"></script>
+<script src="js/editor/tables.js"></script>
+<script src="js/editor/vars.js"></script>
+<script src="js/codegen/kv-generator.js"></script>
+<script src="js/codegen/sequence.js"></script>
+<script src="js/codegen/st-generator.js"></script>
+<script src="js/codegen/unit-config.js"></script>
+<script src="js/codegen/modal.js"></script>
 </body>
 </html>

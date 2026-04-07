@@ -1,0 +1,11 @@
+{
+  "name": "demo-grafcet",
+  "version": "1.0.0",
+  "description": "Grafcet Studio - PLC programming tool",
+  "main": "src/index.html",
+  "scripts": {
+    "start": "open src/index.html"
+  },
+  "keywords": ["grafcet", "plc", "ladder-logic"],
+  "license": "MIT"
+}
