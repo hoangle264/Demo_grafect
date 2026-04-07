@@ -11,17 +11,7 @@ const ACT_W = 160;           // Action box width (wider)
 // ═══════════════════════════════════════════════════════════
 //  PROJECT STATE
 // ═══════════════════════════════════════════════════════════
-let project = {
-  id:'proj-1',
-  name:'My Project',
-  machineName:'Machine',   // top-level machine name
-  units:[],                // [{id, name, open}]
-  diagrams:[],             // [{id, name, unitId, folderId (legacy), mode, diagramType, machine, unit}]
-  folders:[],              // legacy virtual folders (kept for compat)
-  devices:[]               // [{id, name, open, signals:[{id,name,dataType,ioType,address}]}] — global device types
-};
-let openTabs = [];           // [{diagramId}]
-let activeDiagramId = null;
+// project, openTabs, activeDiagramId → moved to src/js/modules/store.js
 
 // ── Per-Diagram runtime state ──
 let state = { steps:[], transitions:[], parallels:[], connections:[] };
@@ -334,65 +324,13 @@ function init() {
   applyView();
 }
 
-function esc2(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// esc2() and esc() → moved to src/js/modules/utils.js
 
 // ═══════════════════════════════════════════════════════════
 //  PROJECT MANAGEMENT
+//  loadProject / saveProject / saveDiagramData / loadDiagramData /
+//  deleteDiagramData / flushState → moved to src/js/modules/store.js
 // ═══════════════════════════════════════════════════════════
-function loadProject() {
-  try {
-    const raw = localStorage.getItem('gf2-project');
-    if (raw) {
-      project = JSON.parse(raw);
-      if (!project.folders) project.folders = [];
-      if (!project.units) project.units = [];
-      if (!project.devices) project.devices = [];
-      if (!project.devCategories) project.devCategories = [];
-      if (!project.machineName) project.machineName = project.name || 'Machine';
-      // Migrate old diagrams that have folderId but no unitId
-      project.diagrams.forEach(d=>{
-        if(!d.mode) d.mode = 'Auto';
-        if(!d.diagramType) d.diagramType = 'Main';
-        if(!d.machine) d.machine = project.machineName;
-        if(!d.unit) d.unit = '';
-      });
-      const lastId = localStorage.getItem('gf2-active');
-      if (lastId && project.diagrams.find(d=>d.id===lastId)) {
-        openTab(lastId);
-      } else if (project.diagrams.length > 0) {
-        openTab(project.diagrams[0].id);
-      } else {
-        addDiagram(true);
-      }
-    } else {
-      addDiagram(true);
-    }
-  } catch(e) { addDiagram(true); }
-}
-
-function saveProject() {
-  try { localStorage.setItem('gf2-project', JSON.stringify(project)); } catch(e){}
-}
-
-function saveDiagramData(id, s, nid, nsn, vx, vy, vs) {
-  try {
-    localStorage.setItem('gf2-diag-'+id, JSON.stringify({
-      state: s || state,
-      nextId: nid ?? nextId,
-      nextStepNum: nsn ?? nextStepNum,
-      viewX: vx ?? viewX, viewY: vy ?? viewY, viewScale: vs ?? viewScale
-    }));
-  } catch(e){}
-}
-
-function loadDiagramData(id) {
-  try {
-    const raw = localStorage.getItem('gf2-diag-'+id);
-    if (raw) return JSON.parse(raw);
-  } catch(e){}
-  return null;
-}
 
 function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {
   const id = 'diag-'+Date.now();
@@ -458,9 +396,7 @@ function createSample(id) {
   saveDiagramData(id, s, 10, 3, 60, 40, 1);
 }
 
-function deleteDiagramData(id) {
-  try { localStorage.removeItem('gf2-diag-'+id); } catch(e){}
-}
+// deleteDiagramData → moved to src/js/modules/store.js
 
 function openTab(id) {
   // Flush current state if active
@@ -505,11 +441,7 @@ function closeTab(id, e) {
   } else renderTabs();
 }
 
-function flushState() {
-  if (!activeDiagramId) return;
-  saveDiagramData(activeDiagramId);
-  markModified(activeDiagramId, false);
-}
+// flushState → moved to src/js/modules/store.js
 
 function saveDiagram() {
   if (!activeDiagramId) return;
@@ -584,6 +516,9 @@ function renderTree() {
     orphans.forEach(d=>body.appendChild(makeDiagItem(d)));
   }
 
+  // ── Drivers section (ActiveDevices — mode='Drivers') ──
+  body.appendChild(makeDriversSection());
+
   document.getElementById('project-name-display').textContent = project.name;
   updateAlignBtns();
 }
@@ -610,14 +545,32 @@ function makeUnitItem(u) {
   const children = document.createElement('div');
   children.className = 'tree-unit-children' + (isOpen?'':' hidden');
 
-  // All diagrams in this unit, flat list
+  // Group diagrams theo mode — gọi makeModeGroup() cho mỗi mode có ít nhất 1 diagram
   if(!diagsInUnit.length){
     const empty = document.createElement('div');
     empty.style.cssText='padding:3px 8px 3px 18px;font-size:9px;color:var(--text3);font-style:italic;';
     empty.textContent='no diagrams';
     children.appendChild(empty);
   } else {
-    diagsInUnit.forEach(d=>children.appendChild(makeDiagItem(d)));
+    const UNIT_MODES = [
+      {key:'Auto',   icon:'⚙'},
+      {key:'Origin', icon:'⟳'},
+      {key:'Manual', icon:'🖐'},
+      {key:'Error',  icon:'⚠'},
+    ];
+    // Diagrams có mode thuộc danh sách UNIT_MODES → nhóm vào mode group
+    const groupedModeKeys = new Set();
+    UNIT_MODES.forEach(m => {
+      const hasDiags = diagsInUnit.some(d=>d.mode===m.key);
+      if(hasDiags){
+        groupedModeKeys.add(m.key);
+        children.appendChild(makeModeGroup(u, m));
+      }
+    });
+    // Diagrams có mode không thuộc UNIT_MODES (custom hoặc legacy) → flat list ở cuối
+    diagsInUnit.filter(d=>!groupedModeKeys.has(d.mode)).forEach(d=>{
+      children.appendChild(makeDiagItem(d));
+    });
   }
 
   wrap.appendChild(head); wrap.appendChild(children);
@@ -1430,7 +1383,7 @@ function confirmRename() {
   closeModal('modal-rename');
 }
 function showModal(id) { document.getElementById(id).classList.add('show'); setTimeout(()=>document.getElementById('modal-input').focus(),50); }
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+// closeModal → moved to src/js/modules/utils.js
 document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElementById('modal-rename').classList.contains('show')) confirmRename(); });
 
 function newProject() {
@@ -2741,18 +2694,9 @@ function getPortXYStatic(id, port, s2) {
 
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
+//  show / hide / toast / toastTimer / closeModal → moved to src/js/modules/utils.js
 // ═══════════════════════════════════════════════════════════
 function svgE(t){return document.createElementNS('http://www.w3.org/2000/svg',t);}
-function show(id){document.getElementById(id).style.display='block';}
-function hide(id){document.getElementById(id).style.display='none';}
-let toastTimer;
-function toast(msg){
-  const old=document.querySelector('.toast');if(old)old.remove();
-  const el=document.createElement('div');el.className='toast';el.textContent=msg;
-  document.body.appendChild(el);
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),300);},2500);
-}
 
 // ═══════════════════════════════════════════════════════════
 //  EXPORT TABLES
@@ -2846,39 +2790,7 @@ function buildStepTable(s) {
 }
 
 // ─── Graph traversal helpers ───
-// Resolve all STEPS reachable from an element in one direction, traversing through parallel bars
-function resolveStepsThrough(startId, direction, connections, steps, parallels, visited=new Set()) {
-  if(visited.has(startId)) return [];
-  visited.add(startId);
-
-  const result = [];
-  // Get direct neighbours in the given direction
-  const neighbours = direction === 'downstream'
-    ? connections.filter(c=>c.from===startId).map(c=>c.to)
-    : connections.filter(c=>c.to===startId).map(c=>c.from);
-
-  for(const nId of neighbours){
-    const step = steps.find(x=>x.id===nId);
-    if(step){ result.push(step); continue; }
-    // It's a parallel bar — traverse through it
-    const bar = parallels.find(x=>x.id===nId);
-    if(bar){
-      // From the bar, continue in same direction
-      const barNeighbours = direction === 'downstream'
-        ? connections.filter(c=>c.from===nId).map(c=>c.to)
-        : connections.filter(c=>c.to===nId).map(c=>c.from);
-      for(const bnId of barNeighbours){
-        const bStep = steps.find(x=>x.id===bnId);
-        if(bStep) result.push(bStep);
-        // Could be another bar — recurse
-        else if(parallels.find(x=>x.id===bnId)){
-          result.push(...resolveStepsThrough(bnId, direction, connections, steps, parallels, visited));
-        }
-      }
-    }
-  }
-  return result;
-}
+// resolveStepsThrough → moved to src/js/modules/graph-utils.js
 
 // ─── Transition Table ───
 function buildTransTable(s) {
