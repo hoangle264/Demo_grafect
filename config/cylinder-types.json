@@ -1,0 +1,101 @@
+{
+  "_comment": "Cylinder Types — Định nghĩa loại xy lanh, hướng chuyển động và cấu trúc output",
+  "_version": "1.0",
+  "_guide": [
+    "Mỗi key cấp cao nhất = loại cylinder (dùng trong project config tại cylinders[].type).",
+    "",
+    "dirA: Hướng chính (thường là UP / EXTEND / CLOSE — hướng 'làm việc')",
+    "dirB: Hướng về (thường là DOWN / RETRACT / OPEN — hướng 'hồi về')",
+    "",
+    "Quy tắc Output IL:",
+    "  dirA → SET outDirA, RES outDirB",
+    "  dirB → RES outDirA, SET outDirB",
+    "  Manual: ANP (rising pulse) cho dirA, ANF (falling pulse) cho dirB",
+    "",
+    "Trường 'stepRole':",
+    "  Mỗi cylinder trong một flow có 1 step. Step đó điều khiển hướng nào?",
+    "  'dirA': step này kích hoạt hướng A",
+    "  'dirB': step này kích hoạt hướng B",
+    "  Trong Origin và Station, mỗi entry trong flow[] sẽ khai báo stepRole."
+  ],
+
+  "Cylinder_UpDown": {
+    "_comment": "Xy lanh thẳng đứng — 2 chiều: Up và Down",
+    "dirA": {
+      "name": "Up",
+      "label": "Up",
+      "manualPulse": "ANP",
+      "outputAction": "SET_A_RES_B"
+    },
+    "dirB": {
+      "name": "Down",
+      "label": "Down",
+      "manualPulse": "ANF",
+      "outputAction": "RES_A_SET_B"
+    },
+    "errorTimeout": 500
+  },
+
+  "Cylinder_ExtendRetract": {
+    "_comment": "Xy lanh ngang — 2 chiều: Extend (ra) và Retract (vào)",
+    "dirA": {
+      "name": "Extend",
+      "label": "Extend",
+      "manualPulse": "ANP",
+      "outputAction": "SET_A_RES_B"
+    },
+    "dirB": {
+      "name": "Retract",
+      "label": "Retract",
+      "manualPulse": "ANF",
+      "outputAction": "RES_A_SET_B"
+    },
+    "errorTimeout": 500
+  },
+
+  "Cylinder_CloseOpen": {
+    "_comment": "Xy lanh kẹp / kẹo — 2 chiều: Close (kẹp) và Open (nhả)",
+    "dirA": {
+      "name": "Close",
+      "label": "Close",
+      "manualPulse": "ANP",
+      "outputAction": "SET_A_RES_B"
+    },
+    "dirB": {
+      "name": "Open",
+      "label": "Open",
+      "manualPulse": "ANF",
+      "outputAction": "RES_A_SET_B"
+    },
+    "errorTimeout": 500
+  },
+
+  "Cylinder_LeftRight": {
+    "_comment": "Xy lanh trượt ngang — 2 chiều: Left (trái) và Right (phải)",
+    "dirA": {
+      "name": "Right",
+      "label": "Right",
+      "manualPulse": "ANP",
+      "outputAction": "SET_A_RES_B"
+    },
+    "dirB": {
+      "name": "Left",
+      "label": "Left",
+      "manualPulse": "ANF",
+      "outputAction": "RES_A_SET_B"
+    },
+    "errorTimeout": 500
+  },
+
+  "Cylinder_Single": {
+    "_comment": "Xy lanh 1 chiều — chỉ có Extend, lò xo tự hồi. Không có dirB output.",
+    "dirA": {
+      "name": "Extend",
+      "label": "Extend",
+      "manualPulse": "ANP",
+      "outputAction": "SET_A"
+    },
+    "dirB": null,
+    "errorTimeout": 500
+  }
+}

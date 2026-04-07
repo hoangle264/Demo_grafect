@@ -1,0 +1,131 @@
+{
+  "_comment": "Infeed Unit — Unit-level hardware config. Flow sequence đến từ canvas diagram.",
+  "_version": "2.0",
+  "_guide": [
+    "File này CHỈ chứa thông tin phần cứng cố định của Unit:",
+    "  - unit.flags  : địa chỉ cờ nội bộ MR (flagManual, flagAuto, flagError...)",
+    "  - unit.io     : địa chỉ E-Stop, HMI buttons, DM error, Homed output",
+    "  - cylinders[] : với mỗi cylinder: sysManFlag, hmiManBtn, lock, errFlag, errorTimeout",
+    "",
+    "Những gì KHÔNG có ở đây (lấy từ canvas):",
+    "  - Thứ tự step trong Origin/Station  → từ diagram Mode=Origin / Mode=Auto",
+    "  - Action mỗi step (cylinder nào, hướng nào) → step.actions[] trong diagram",
+    "  - Sensor điều kiện chuyển tiếp → transition.condition trong diagram",
+    "  - Địa chỉ vật lý output/sensor   → Variable Table của diagram (CY1.Up_SOL=LR000...)",
+    "",
+    "QUY TẮC đặt tên biến trong Variable Table:",
+    "  Output SOL : {CyId}.{DirA}_SOL   VD: CY1.Up_SOL    = LR000",
+    "               {CyId}.{DirB}_SOL   VD: CY1.Down_SOL  = LR001",
+    "  Sensor     : {CyId}.{DirA}_SNS   VD: CY1.Up_SNS    = MR1000",
+    "               {CyId}.{DirB}_SNS   VD: CY1.Down_SNS  = MR1001",
+    "  cylinders[].id phải khớp với prefix tên biến (VD id='CY1' → tìm 'CY1.*')",
+    "",
+    "BASE ADDRESS:",
+    "  unit.originBaseAddr  : base MR cho Origin flow  (VD @MR100 → step0=@MR100/101, step1=@MR102/103...)",
+    "  unit.autoBaseAddr    : base MR cho Auto/Station flow (VD @MR300)",
+    "  Giá trị này có thể thay đổi tại đây để tránh xung đột với project khác."
+  ],
+
+  "unit": {
+    "label": "Infeed",
+    "plcProfile": "kv-5500",
+
+    "originBaseAddr": "@MR100",
+    "autoBaseAddr":   "@MR300",
+    "autoEndPulseAddr": "@MR011",
+
+    "flags": {
+      "flagOrigin":     "@MR000",
+      "flagAuto":       "@MR001",
+      "flagManual":     "@MR002",
+      "flagManPEnd":    "@MR003",
+      "flagError":      "@MR004",
+      "flagErrStop":    "@MR005",
+      "flagResetPulse": "@MR006",
+      "flagResetEnd":   "@MR006",
+      "flagHomed":      "@MR010"
+    },
+
+    "io": {
+      "eStop":         "MR103",
+      "outHomed":      "MR105",
+      "btnStart":      "MR5000",
+      "btnReset":      "MR5001",
+      "hmiStart":      "MR6000",
+      "hmiStop":       "MR6001",
+      "hmiManual":     "MR6003",
+      "errorDMAddr":   "DM102",
+      "hmiManBtnBase": "MR1400",
+      "hmiManBtnEnd":  "MR1415"
+    }
+  },
+
+  "cylinders": [
+    {
+      "id":          "CY1",
+      "label":       "CY1",
+      "hmiManBtn":   "MR1400",
+      "sysManFlag":  "MR1500",
+      "lockDirA":    "MR1200",
+      "lockDirB":    "MR1201",
+      "errFlagDirA": "MR1600",
+      "errFlagDirB": "MR1601",
+      "errorTimeout": 500
+    },
+    {
+      "id":          "CY2",
+      "label":       "CY2",
+      "hmiManBtn":   "MR1401",
+      "sysManFlag":  "MR1501",
+      "lockDirA":    "MR1202",
+      "lockDirB":    "MR1203",
+      "errFlagDirA": "MR1602",
+      "errFlagDirB": "MR1603",
+      "errorTimeout": 500
+    },
+    {
+      "id":          "CY3",
+      "label":       "CY3",
+      "hmiManBtn":   "MR1402",
+      "sysManFlag":  "MR1502",
+      "lockDirA":    "MR1204",
+      "lockDirB":    "MR1205",
+      "errFlagDirA": "MR1604",
+      "errFlagDirB": "MR1605",
+      "errorTimeout": 500
+    },
+    {
+      "id":          "CY4",
+      "label":       "CY4",
+      "hmiManBtn":   "MR1403",
+      "sysManFlag":  "MR1503",
+      "lockDirA":    "MR1206",
+      "lockDirB":    "MR1207",
+      "errFlagDirA": "MR1606",
+      "errFlagDirB": "MR1607",
+      "errorTimeout": 500
+    },
+    {
+      "id":          "CY5",
+      "label":       "CY5",
+      "hmiManBtn":   "MR1404",
+      "sysManFlag":  "MR1504",
+      "lockDirA":    "MR1208",
+      "lockDirB":    "MR1209",
+      "errFlagDirA": "MR1608",
+      "errFlagDirB": "MR1609",
+      "errorTimeout": 500
+    },
+    {
+      "id":          "CY6",
+      "label":       "CY6",
+      "hmiManBtn":   "MR1405",
+      "sysManFlag":  "MR1505",
+      "lockDirA":    "MR1210",
+      "lockDirB":    "MR1211",
+      "errFlagDirA": "MR1610",
+      "errFlagDirB": "MR1611",
+      "errorTimeout": 500
+    }
+  ]
+}

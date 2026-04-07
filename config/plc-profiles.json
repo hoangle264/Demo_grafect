@@ -1,0 +1,94 @@
+{
+  "_comment": "PLC Target Profiles — tương đương const PLC_PROFILES trong grafcet-codegen.js",
+  "_version": "1.0",
+
+  "kv-5500": {
+    "label": "Keyence KV-5500 / 5000 / 3000",
+    "fileExt": ".mnm",
+    "comment": ";",
+    "LD":      "LD",
+    "LDNOT":   "LDNOT",
+    "AND":     "AND",
+    "ANDNOT":  "ANDNOT",
+    "OR":      "OR",
+    "ORNOT":   "ORNOT",
+    "ANB":     "ANB",
+    "ORB":     "ORB",
+    "SET":     "SET",
+    "RST":     "RST",
+    "OUT":     "OUT",
+    "timerTemplate": "ONDL #${ms} ${addr}"
+  },
+
+  "kv-8000": {
+    "label": "Keyence KV-8000 / 7500",
+    "fileExt": ".mnm",
+    "comment": ";",
+    "LD":      "LD",
+    "LDNOT":   "LDNOT",
+    "AND":     "AND",
+    "ANDNOT":  "ANDNOT",
+    "OR":      "OR",
+    "ORNOT":   "ORNOT",
+    "ANB":     "ANB",
+    "ORB":     "ORB",
+    "SET":     "SET",
+    "RST":     "RST",
+    "OUT":     "OUT",
+    "timerTemplate": "TMRON ${addr} #${ms}"
+  },
+
+  "melsec": {
+    "label": "Mitsubishi MELSEC iQ-R / F / L",
+    "fileExt": ".gxw",
+    "comment": "//",
+    "LD":      "LD",
+    "LDNOT":   "LDI",
+    "AND":     "AND",
+    "ANDNOT":  "ANI",
+    "OR":      "OR",
+    "ORNOT":   "ORI",
+    "ANB":     "ANB",
+    "ORB":     "ORB",
+    "SET":     "SET",
+    "RST":     "RST",
+    "OUT":     "OUT",
+    "timerTemplate": "OUT  ${addr} K${ms_x100}"
+  },
+
+  "omron": {
+    "label": "Omron CJ / CS / NJ / NX",
+    "fileExt": ".cxp",
+    "comment": "//",
+    "LD":      "LD",
+    "LDNOT":   "LD NOT",
+    "AND":     "AND",
+    "ANDNOT":  "AND NOT",
+    "OR":      "OR",
+    "ORNOT":   "OR NOT",
+    "ANB":     "AND LD",
+    "ORB":     "OR LD",
+    "SET":     "SET",
+    "RST":     "RSET",
+    "OUT":     "OUT",
+    "timerTemplate": "TIM  ${addr} #${ms_x10}"
+  },
+
+  "siemens": {
+    "label": "Siemens S7-1200 / 1500 (AWL/STL)",
+    "fileExt": ".awl",
+    "comment": "//",
+    "LD":      "U",
+    "LDNOT":   "UN",
+    "AND":     "U",
+    "ANDNOT":  "UN",
+    "OR":      "O",
+    "ORNOT":   "ON",
+    "ANB":     "ULD",
+    "ORB":     "OLD",
+    "SET":     "S",
+    "RST":     "R",
+    "OUT":     "=",
+    "timerTemplate": "L   S5T#${ms}MS\nSD  ${addr}"
+  }
+}

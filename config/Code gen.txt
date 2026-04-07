@@ -1,0 +1,235 @@
+
+LD MR103                 ; Infeed Unit  estop
+ZRES @MR000 @MR415       ; Origin
+LD @MR002                ; Manual
+ZRES @MR100 @MR415       ; CY1 Down
+;<h1/>Error
+LD CR2002                ; Always ON
+MOV MR1600 DM102         ; Error _CY1_Up  Infeed_Error
+LD> DM102 #0             ; Infeed_Error
+SET @MR004               ; Error
+LD @MR004                ; Error
+SET @MR005               ; Operation Error Stop
+LD @MR005                ; Operation Error Stop
+AND MR5001               ; btnReset
+DIFU @MR006              ; Reset Error
+LDP @MR006               ; Reset Error
+ZRES @MR004 @MR006       ; Error  Reset Error
+;<h1/>Manual
+LDB @MR001               ; Auto
+AND MR6003               ; Hmi_infeed_Manual
+OR @MR002                ; Manual
+ANB MR103                ; Infeed Unit  estop
+ANB @MR003               ; Manual P end
+OUT @MR002               ; Manual
+LD @MR002                ; Manual
+MPS
+ANP MR1400               ; Hmi_man _CY1
+ALT MR1500               ; sys_man_CY1
+MRD
+ANP MR1401               ; Hmi_man _CY2
+ALT MR1501               ; sys_man_CY2
+MRD
+ANP MR1402               ; Hmi_man _CY3
+ALT MR1502               ; sys_man_CY3
+MRD
+ANP MR1403               ; Hmi_man _CY4
+ALT MR1503               ; sys_man_CY4
+MRD
+ANP MR1404               ; Hmi_man _CY5
+ALT MR1504               ; sys_man_CY5
+MPP
+ANP MR1405               ; Hmi_man _CY6
+ALT MR1505               ; sys_man_CY6
+LDB @MR002               ; Manual
+MPS
+ANP LR000                ; Out_Infeed_CY1_Up
+SET MR1500               ; sys_man_CY1
+MRD
+ANP LR001                ; Out_Infeed_CY1_Down
+RES MR1500               ; sys_man_CY1
+MRD
+ANP LR002                ; Out_Infeed_CY2_Extend
+SET MR1501               ; sys_man_CY2
+MRD
+ANP LR003                ; Out_Infeed_CY2_Retract
+RES MR1501               ; sys_man_CY2
+MRD
+ANP LR004                ; Out_Infeed_CY3_Down
+SET MR1502               ; sys_man_CY3
+MRD
+ANP LR005                ; Out_Infeed_CY3_Up
+RES MR1502               ; sys_man_CY3
+MRD
+ANP LR006                ; Out_Infeed_CY4_Extend
+SET MR1503               ; sys_man_CY4
+MRD
+ANP LR007                ; Out_Infeed_CY4_Retract
+RES MR1503               ; sys_man_CY4
+MRD
+ANP LR008                ; Out_Infeed_CY5_Close
+SET MR1504               ; sys_man_CY5
+MRD
+ANP LR009                ; Out_Infeed_CY5_Open
+RES MR1504               ; sys_man_CY5
+MRD
+ANP LR010                ; Out_Infeed_CY6_Close
+SET MR1505               ; sys_man_CY6
+MPP
+ANP LR011                ; Out_Infeed_CY6_Open
+RES MR1505               ; sys_man_CY6
+LDB @MR002               ; Manual
+ZRES MR1400 MR1415       ; Hmi_man _CY1
+LD @MR001                ; Auto
+DIFU @MR003              ; Manual P end
+;<h1/>Origin
+LDP MR5000               ; btnStart
+ORP MR6000               ; Hmi_infeed_start
+ANB @MR002               ; Manual
+ANB @MR010               ; Homed
+OR @MR000                ; Origin
+AND @MR004               ; Error
+ANB MR103                ; Infeed Unit  estop
+ANB MR6001               ; Hmi infeed _stop
+OUT @MR000               ; Origin
+;CY1 Down
+LD @MR000                ; Origin
+ANB @MR010               ; Homed
+ANB @MR004               ; Error
+SET @MR100               ; CY1 Down
+LD @MR100                ; CY1 Down
+AND MR1001               ; in_Infeed_CY1_Down
+SET @MR101               ; CY1 Down Cmp
+;CY2 Left
+LD @MR101                ; CY1 Down Cmp
+ANB @MR004               ; Error
+AND MR7000               ; widing output safe
+SET @MR102               ; CY2 Left 
+LD @MR102                ; CY2 Left 
+AND MR1003               ; in_Infeed_CY2_Retract
+SET @MR103               ; CY2 Left Cmp
+LD @MR101                ; CY1 Down Cmp
+SET @MR010               ; Homed
+LD @MR010                ; Homed
+OUT MR105                ; Infeed Unit  homed
+;<h1/>Auto
+LDP MR5000               ; btnStart
+ORP MR6000               ; Hmi_infeed_start
+AND @MR010               ; Homed
+OR @MR001                ; Auto
+AND @MR004               ; Error
+ANB MR103                ; Infeed Unit  estop
+ANB MR6001               ; Hmi infeed _stop
+OUT @MR001               ; Auto
+LD @MR010                ; Homed
+AND @MR001               ; Auto
+ANB @MR002               ; Manual
+ANB @MR004               ; Error
+SET @MR200
+;<h1/>Station 1
+;CY2 Left
+LD @MR001                ; Auto
+AND @MR010               ; Homed
+ANB @MR004               ; Error
+SET @MR300               ; CY2 Left
+LD @MR300                ; CY2 Left
+AND MR1003               ; in_Infeed_CY2_Retract
+SET @MR301               ; CY2 Left Cmp
+;CY1 Up
+LD @MR301                ; CY2 Left Cmp
+ANB @MR004               ; Error
+SET @MR302               ; CY1 Up
+LD @MR302                ; CY1 Up
+AND MR1000               ; in_Infeed_CY1_Up
+SET @MR303               ; CY1 Up Cmp
+;CY1 Down
+LD @MR303                ; CY1 Up Cmp
+ANB @MR004               ; Error
+SET @MR304               ; CY1 Down
+LD @MR304                ; CY1 Down
+AND MR1001               ; in_Infeed_CY1_Down
+SET @MR305               ; CY1 Down Cmp
+;CY2 Right
+LD @MR305                ; CY1 Down Cmp
+ANB @MR004               ; Error
+AND MR1005               ; in_Infeed_CY3_Up
+SET @MR306               ; CY2 Right
+LD @MR306                ; CY2 Right
+AND MR1002               ; in_Infeed_CY2_Extend
+SET @MR307               ; CY2 Right Cmp
+LD @MR307                ; CY2 Right Cmp
+DIFU @MR011              ; Sequence 1 End
+LD @MR011                ; Sequence 1 End
+ZRES @MR300 @MR315       ; CY2 Left
+;<h1/>Output
+;CY1
+LD @MR001                ; Auto
+AND @MR302               ; CY1 Up
+ANB @MR303               ; CY1 Up Cmp
+LD @MR002                ; Manual
+ANP MR1500               ; sys_man_CY1
+ORL
+ANB MR1200               ; Infeed_CY1_Lock_Up
+SET LR000                ; Out_Infeed_CY1_Up
+CON
+RES LR001                ; Out_Infeed_CY1_Down
+LD @MR001                ; Auto
+LD @MR100                ; CY1 Down
+ANB @MR101               ; CY1 Down Cmp
+LD @MR304                ; CY1 Down
+ANB @MR305               ; CY1 Down Cmp
+ORL
+ANL
+LD @MR002                ; Manual
+ANF MR1500               ; sys_man_CY1
+ORL
+ANB MR1201               ; Infeed_CY1_Lock Down
+RES LR000                ; Out_Infeed_CY1_Up
+CON
+SET LR001                ; Out_Infeed_CY1_Down
+LD LR000                 ; Out_Infeed_CY1_Up
+ANB MR1000               ; in_Infeed_CY1_Up
+ANB @MR002               ; Manual
+ANB @MR005               ; Operation Error Stop
+ONDL #500 MR1600         ; Error _CY1_Up
+LD LR001                 ; Out_Infeed_CY1_Down
+ANB MR1001               ; in_Infeed_CY1_Down
+ANB @MR002               ; Manual
+ANB @MR005               ; Operation Error Stop
+ONDL #500 MR1601         ; Error_CY1_Down
+;CY2
+LD @MR001                ; Auto
+AND @MR306               ; CY2 Right
+ANB @MR307               ; CY2 Right Cmp
+LD @MR002                ; Manual
+ANP MR1501               ; sys_man_CY2
+ORL
+ANB MR1202               ; Infeed_CY2_Lock Extend
+SET LR002                ; Out_Infeed_CY2_Extend
+CON
+RES LR003                ; Out_Infeed_CY2_Retract
+LD @MR001                ; Auto
+LD @MR102                ; CY2 Left 
+ANB @MR103               ; CY2 Left Cmp
+LD @MR300                ; CY2 Left
+ANB @MR301               ; CY2 Left Cmp
+ORL
+ANL
+LD @MR002                ; Manual
+ANF MR1501               ; sys_man_CY2
+ORL
+ANB MR1203               ; Infeed_CY2_Lock Retract
+RES LR002                ; Out_Infeed_CY2_Extend
+CON
+SET LR003                ; Out_Infeed_CY2_Retract
+LD LR002                 ; Out_Infeed_CY2_Extend
+ANB MR1002               ; in_Infeed_CY2_Extend
+ANB @MR002               ; Manual
+ANB @MR005               ; Operation Error Stop
+ONDL #500 MR1602         ; Error_CY2_Extend
+LD LR003                 ; Out_Infeed_CY2_Retract
+ANB MR1003               ; in_Infeed_CY2_Retract
+ANB @MR002               ; Manual
+ANB @MR005               ; Operation Error Stop
+ONDL #500 MR1603         ; Error_CY2_Retract
+

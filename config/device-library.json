@@ -1,0 +1,112 @@
+{
+  "_comment": "Device Library — tương đương let DEVICE_LIBRARY trong grafcet-codegen.js",
+  "_version": "1.0",
+  "_guide": [
+    "Mỗi key ở cấp cao nhất = tên Device Type (khớp với project.devices[].name).",
+    "templates: map tên Signal → template IL string.",
+    "  Placeholder hợp lệ: ${execMR}, ${physAddr}, ${interlock}, ${manual_logic}, ${devLabel}, ${sigName}.",
+    "  Dòng chứa placeholder rỗng sẽ bị xóa tự động (optional clause).",
+    "  Dùng \\n để xuống dòng trong template.",
+    "manual_logic: câu lệnh IL chèn sau ANDNOT interlock (ví dụ AND MR_ManualMode).",
+    "  Để chuỗi rỗng hoặc bỏ key nếu không cần.",
+    "default: template dự phòng khi sigName không khớp bất kỳ key nào."
+  ],
+
+  "Cylinder_Standard": {
+    "_comment": "Xi-lanh khí nén 2 chiều, 2 cuộn hút (Extend + Retract)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Extend_SOL": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Retract_SOL": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":    "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Cylinder_Single": {
+    "_comment": "Xi-lanh khí nén 1 chiều (chỉ có Extend_SOL, lò xo tự hồi)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Extend_SOL": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":    "${execMR}\nANDNOT ${interlock}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Motor_DOL": {
+    "_comment": "Motor khởi động trực tiếp (Direct On-Line). Interlock thêm tiếp điểm overload.",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Run_KM": "${execMR}\nANDNOT ${interlock}\nANDNOT ${overload_contact}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Motor_StarDelta": {
+    "_comment": "Motor khởi động Sao-Tam giác (3 contactor: Main_KM, Star_KM, Delta_KM)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Main_KM":  "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Star_KM":  "${execMR}\nANDNOT ${interlock}\nANDNOT ${devLabel}_Delta_KM\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Delta_KM": "${execMR}\nANDNOT ${interlock}\nANDNOT ${devLabel}_Star_KM\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":  "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Conveyor_Belt": {
+    "_comment": "Băng tải đơn giản: 1 contactor chạy thuận, tùy chọn chạy ngược",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Forward_KM":  "${execMR}\nANDNOT ${interlock}\nANDNOT ${devLabel}_Reverse_KM\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Reverse_KM":  "${execMR}\nANDNOT ${interlock}\nANDNOT ${devLabel}_Forward_KM\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":     "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Vacuum_Gripper": {
+    "_comment": "Đầu hút chân không: bật van hút (Vac_SOL), xả (Release_SOL)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Vac_SOL":     "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Release_SOL": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":     "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Rotary_Table": {
+    "_comment": "Bàn xoay: lệnh Index (xoay 1 vị trí) và kẹp chặt (Clamp_SOL)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "Index_SOL":  "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Clamp_SOL":  "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":    "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Servo_Axis": {
+    "_comment": "Trục servo: kích hoạt lệnh di chuyển (Move_CMD) và kích servo (Servo_ON)",
+    "manual_logic": "",
+    "templates": {
+      "Servo_ON":  "${execMR}\nANDNOT ${interlock}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Move_CMD":  "${execMR}\nANDNOT ${interlock}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":   "${execMR}\nANDNOT ${interlock}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Indicator_Light": {
+    "_comment": "Đèn tín hiệu / cảnh báo — không có manual_logic và không có interlock cứng",
+    "manual_logic": "",
+    "templates": {
+      "Green_LT":  "${execMR}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Yellow_LT": "${execMR}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "Red_LT":    "${execMR}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}",
+      "default":   "${execMR}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  },
+
+  "Solenoid_Valve": {
+    "_comment": "Van điện từ đơn thuần (không phân biệt xi-lanh)",
+    "manual_logic": "AND  MR_ManualMode",
+    "templates": {
+      "default": "${execMR}\nANDNOT ${interlock}\n${manual_logic}\nOUT  ${physAddr}               ; ${devLabel}.${sigName}"
+    }
+  }
+}

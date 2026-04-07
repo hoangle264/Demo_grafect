@@ -1,0 +1,302 @@
+{
+  "_comment": "Unit Templates — Cấu trúc IL cho 4 phần Error/Manual/Origin/Auto của một Unit",
+  "_version": "1.0",
+  "_guide": [
+    "File này định nghĩa CẤU TRÚC CHUNG (skeleton) cho mỗi section.",
+    "Codegen đọc file này để biết thứ tự và dạng lệnh IL cần sinh ra.",
+    "Placeholders (${...}) sẽ được thay thế bằng giá trị từ project config.",
+    "",
+    "Placeholders toàn cục của Unit:",
+    "  ${unit.eStop}        : Địa chỉ tiếp điểm E-Stop của unit  (VD: MR103)",
+    "  ${unit.flagBase}     : Base flag MR của unit               (VD: @MR000)",
+    "  ${unit.flagError}    : Flag lỗi                            (VD: @MR004)",
+    "  ${unit.flagErrStop}  : Flag dừng lỗi                       (VD: @MR005)",
+    "  ${unit.flagAuto}     : Flag chế độ Auto                    (VD: @MR001)",
+    "  ${unit.flagManual}   : Flag chế độ Manual                  (VD: @MR002)",
+    "  ${unit.flagManPEnd}  : Flag Manual Pulse End               (VD: @MR003)",
+    "  ${unit.flagHomed}    : Flag đã về gốc                      (VD: @MR010)",
+    "  ${unit.flagOrigin}   : Flag đang chạy Origin               (VD: @MR000)",
+    "  ${unit.outHomed}     : Output Homed ra HMI                 (VD: MR105)",
+    "  ${unit.btnStart}     : Địa chỉ nút Start vật lý            (VD: MR5000)",
+    "  ${unit.hmiStart}     : Địa chỉ nút Start từ HMI            (VD: MR6000)",
+    "  ${unit.hmiStop}      : Địa chỉ nút Stop từ HMI             (VD: MR6001)",
+    "  ${unit.hmiManual}    : Địa chỉ nút Manual từ HMI           (VD: MR6003)",
+    "  ${unit.btnReset}     : Địa chỉ nút Reset lỗi               (VD: MR5001)",
+    "  ${unit.errorDMAddr}  : Địa chỉ DM tổng hợp lỗi            (VD: DM102)",
+    "  ${unit.originSeqEnd} : Flag kết thúc sequence Origin       (VD: @MR101)",
+    "",
+    "Placeholders liên quan Cylinder (được mở rộng bởi cylinder-types.json):",
+    "  ${cy.hmiManBtn}    : Nút bấm Manual trên HMI cho CY này  (VD: MR1400)",
+    "  ${cy.sysManFlag}   : Flag manual nội bộ của CY này       (VD: MR1500)",
+    "  ${cy.outDirA}      : Output hướng A                      (VD: LR000)",
+    "  ${cy.outDirB}      : Output hướng B                      (VD: LR001)"
+  ],
+
+  "ERROR": {
+    "_comment": "Phần phát hiện lỗi và reset lỗi. Sinh 1 lần cho toàn unit.",
+    "_structure": [
+      {
+        "_note": "Mỗi cylinder có 1 DM lỗi, tổng hợp vào flagError",
+        "template": [
+          "LD   CR2002                ; Always ON",
+          "MOV  ${cy.errorDMSrc} ${unit.errorDMAddr} ; Error_${cy.label}_${cy.dirA.name}  ${unit.label}_Error"
+        ],
+        "repeat": "per_cylinder"
+      },
+      {
+        "_note": "Kiểm tra DM > 0 thì set flagError",
+        "template": [
+          "LD>  ${unit.errorDMAddr} #0  ; ${unit.label}_Error",
+          "SET  ${unit.flagError}        ; Error"
+        ]
+      },
+      {
+        "_note": "Lan truyền Error → ErrorStop",
+        "template": [
+          "LD   ${unit.flagError}        ; Error",
+          "SET  ${unit.flagErrStop}      ; Operation Error Stop"
+        ]
+      },
+      {
+        "_note": "Reset Error bằng nút Reset",
+        "template": [
+          "LD   ${unit.flagErrStop}      ; Operation Error Stop",
+          "AND  ${unit.btnReset}         ; btnReset",
+          "DIFU ${unit.flagResetPulse}   ; Reset Error",
+          "LDP  ${unit.flagResetPulse}   ; Reset Error",
+          "ZRES ${unit.flagError} ${unit.flagResetEnd} ; Error  Reset Error"
+        ]
+      }
+    ]
+  },
+
+  "MANUAL": {
+    "_comment": "Phần điều khiển tay. Sinh 1 lần cho toàn unit.",
+    "_structure": [
+      {
+        "_note": "Duy trì flag Manual",
+        "template": [
+          "LDB  ${unit.flagAuto}         ; Auto",
+          "AND  ${unit.hmiManual}        ; Hmi_${unit.label}_Manual",
+          "OR   ${unit.flagManual}       ; Manual",
+          "ANB  ${unit.eStop}            ; ${unit.label}  estop",
+          "ANB  ${unit.flagManPEnd}      ; Manual P end",
+          "OUT  ${unit.flagManual}       ; Manual"
+        ]
+      },
+      {
+        "_note": "Bảng ALT toggle Manual cho từng cylinder (MPS/MRD/MPP stack)",
+        "template_first": [
+          "LD   ${unit.flagManual}       ; Manual",
+          "MPS"
+        ],
+        "template_middle": [
+          "ANP  ${cy.hmiManBtn}          ; Hmi_man _${cy.label}",
+          "ALT  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MRD"
+        ],
+        "template_last": [
+          "ANP  ${cy.hmiManBtn}          ; Hmi_man _${cy.label}",
+          "ALT  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MPP"
+        ],
+        "repeat": "per_cylinder"
+      },
+      {
+        "_note": "Auto-set/reset sysManFlag khi output thực tế thay đổi (không ở Manual mode)",
+        "template_first": [
+          "LDB  ${unit.flagManual}       ; Manual",
+          "MPS"
+        ],
+        "template_dirA": [
+          "ANP  ${cy.outDirA}            ; Out_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "SET  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MRD"
+        ],
+        "template_dirB": [
+          "ANP  ${cy.outDirB}            ; Out_${unit.label}_${cy.label}_${cy.dirB.name}",
+          "RES  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MRD"
+        ],
+        "template_last_dirA": [
+          "ANP  ${cy.outDirA}            ; Out_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "SET  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MPP"
+        ],
+        "template_last_dirB": [
+          "ANP  ${cy.outDirB}            ; Out_${unit.label}_${cy.label}_${cy.dirB.name}",
+          "RES  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "MPP"
+        ],
+        "repeat": "per_cylinder"
+      },
+      {
+        "_note": "Clear HMI manual buttons khi thoát Manual, và tạo Pulse End",
+        "template": [
+          "LDB  ${unit.flagManual}       ; Manual",
+          "ZRES ${unit.hmiManBtnBase} ${unit.hmiManBtnEnd} ; Hmi_man _CY1",
+          "LD   ${unit.flagAuto}         ; Auto",
+          "DIFU ${unit.flagManPEnd}      ; Manual P end"
+        ]
+      }
+    ]
+  },
+
+  "ORIGIN": {
+    "_comment": "Sequence về gốc. Flow được định nghĩa trong project config (origin.flow).",
+    "_structure": [
+      {
+        "_note": "Duy trì flag Origin",
+        "template": [
+          "LDP  ${unit.btnStart}         ; btnStart",
+          "ORP  ${unit.hmiStart}         ; Hmi_${unit.label}_start",
+          "ANB  ${unit.flagManual}       ; Manual",
+          "ANB  ${unit.flagHomed}        ; Homed",
+          "OR   ${unit.flagOrigin}       ; Origin",
+          "AND  ${unit.flagError}        ; Error",
+          "ANB  ${unit.eStop}            ; ${unit.label}  estop",
+          "ANB  ${unit.hmiStop}          ; Hmi ${unit.label} _stop",
+          "OUT  ${unit.flagOrigin}       ; Origin"
+        ]
+      },
+      {
+        "_note": "Các bước trong Origin flow — được sinh động từ origin.flow[]",
+        "generated_from": "origin.flow",
+        "step_template": [
+          "LD   ${step.prev}             ; ${step.prevLabel}",
+          "ANB  ${unit.flagError}        ; Error",
+          "${step.extraCondition}",
+          "SET  ${step.addr}             ; ${step.label}",
+          "LD   ${step.addr}             ; ${step.label}",
+          "AND  ${step.sensor}           ; ${step.sensorLabel}",
+          "SET  ${step.cmpAddr}          ; ${step.label} Cmp"
+        ],
+        "first_step_template": [
+          "LD   ${unit.flagOrigin}       ; Origin",
+          "ANB  ${unit.flagHomed}        ; Homed",
+          "ANB  ${unit.flagError}        ; Error",
+          "SET  ${step.addr}             ; ${step.label}",
+          "LD   ${step.addr}             ; ${step.label}",
+          "AND  ${step.sensor}           ; ${step.sensorLabel}",
+          "SET  ${step.cmpAddr}          ; ${step.label} Cmp"
+        ]
+      },
+      {
+        "_note": "Set Homed sau khi flow hoàn thành",
+        "template": [
+          "LD   ${unit.originSeqEnd}     ; ${unit.originSeqEndLabel}",
+          "SET  ${unit.flagHomed}        ; Homed",
+          "LD   ${unit.flagHomed}        ; Homed",
+          "OUT  ${unit.outHomed}         ; ${unit.label}  homed"
+        ]
+      }
+    ]
+  },
+
+  "AUTO": {
+    "_comment": "Phần Auto mode + các Station sequence. Mỗi station là 1 flow.",
+    "_structure": [
+      {
+        "_note": "Duy trì flag Auto",
+        "template": [
+          "LDP  ${unit.btnStart}         ; btnStart",
+          "ORP  ${unit.hmiStart}         ; Hmi_${unit.label}_start",
+          "AND  ${unit.flagHomed}        ; Homed",
+          "OR   ${unit.flagAuto}         ; Auto",
+          "AND  ${unit.flagError}        ; Error",
+          "ANB  ${unit.eStop}            ; ${unit.label}  estop",
+          "ANB  ${unit.hmiStop}          ; Hmi ${unit.label} _stop",
+          "OUT  ${unit.flagAuto}         ; Auto"
+        ]
+      },
+      {
+        "_note": "Kích hoạt station đầu tiên khi Auto + Homed",
+        "template": [
+          "LD   ${unit.flagHomed}        ; Homed",
+          "AND  ${unit.flagAuto}         ; Auto",
+          "ANB  ${unit.flagManual}       ; Manual",
+          "ANB  ${unit.flagError}        ; Error",
+          "SET  ${station.triggerAddr}   ; Trigger Station"
+        ]
+      },
+      {
+        "_note": "Các bước trong Station flow — được sinh động từ stations[].flow[]",
+        "generated_from": "stations[].flow",
+        "step_template": [
+          "LD   ${step.prev}             ; ${step.prevLabel}",
+          "ANB  ${unit.flagError}        ; Error",
+          "${step.extraCondition}",
+          "SET  ${step.addr}             ; ${step.label}",
+          "LD   ${step.addr}             ; ${step.label}",
+          "AND  ${step.sensor}           ; ${step.sensorLabel}",
+          "SET  ${step.cmpAddr}          ; ${step.label} Cmp"
+        ]
+      },
+      {
+        "_note": "Reset toàn bộ station khi kết thúc cycle (ZRES)",
+        "template": [
+          "LD   ${station.endFlag}       ; ${station.label} End",
+          "DIFU ${station.endPulse}      ; ${station.label} End Pulse",
+          "LD   ${station.endPulse}      ; ${station.label} End Pulse",
+          "ZRES ${station.baseAddr} ${station.endAddr} ; Reset all steps in station"
+        ]
+      }
+    ]
+  },
+
+  "OUTPUT": {
+    "_comment": "Phần Output cho từng cylinder. Template sinh cho dirA (Up/Extend) và dirB (Down/Retract).",
+    "_structure": [
+      {
+        "_note": "OUTPUT dirA — SET output dirA, RES output dirB",
+        "template": [
+          "; ${cy.label}",
+          "LD   ${unit.flagAuto}         ; Auto",
+          "AND  ${cy.stepDirA}           ; ${cy.label} ${cy.dirA.name}",
+          "ANB  ${cy.cmpDirA}            ; ${cy.label} ${cy.dirA.name} Cmp",
+          "LD   ${unit.flagManual}       ; Manual",
+          "ANP  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "ORL",
+          "ANB  ${cy.lockDirA}           ; ${unit.label}_${cy.label}_Lock_${cy.dirA.name}",
+          "SET  ${cy.outDirA}            ; Out_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "CON",
+          "RES  ${cy.outDirB}            ; Out_${unit.label}_${cy.label}_${cy.dirB.name}"
+        ]
+      },
+      {
+        "_note": "OUTPUT dirB — có thể có nhiều step nguồn (Origin + nhiều Station), dùng ORL để OR",
+        "template": [
+          "LD   ${unit.flagAuto}         ; Auto",
+          "${cy.stepsForDirB_ORL}",
+          "ANL",
+          "LD   ${unit.flagManual}       ; Manual",
+          "ANF  ${cy.sysManFlag}         ; sys_man_${cy.label}",
+          "ORL",
+          "ANB  ${cy.lockDirB}           ; ${unit.label}_${cy.label}_Lock_${cy.dirB.name}",
+          "RES  ${cy.outDirA}            ; Out_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "CON",
+          "SET  ${cy.outDirB}            ; Out_${unit.label}_${cy.label}_${cy.dirB.name}"
+        ],
+        "stepsForDirB_item": [
+          "LD   ${step.addr}             ; ${step.label}",
+          "ANB  ${step.cmpAddr}          ; ${step.label} Cmp"
+        ]
+      },
+      {
+        "_note": "Error timer cho cả 2 hướng",
+        "template": [
+          "LD   ${cy.outDirA}            ; Out_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "ANB  ${cy.sensorDirA}         ; in_${unit.label}_${cy.label}_${cy.dirA.name}",
+          "ANB  ${unit.flagManual}       ; Manual",
+          "ANB  ${unit.flagErrStop}      ; Operation Error Stop",
+          "ONDL #${cy.errorTimeout} ${cy.errFlagDirA} ; Error_${cy.label}_${cy.dirA.name}",
+          "LD   ${cy.outDirB}            ; Out_${unit.label}_${cy.label}_${cy.dirB.name}",
+          "ANB  ${cy.sensorDirB}         ; in_${unit.label}_${cy.label}_${cy.dirB.name}",
+          "ANB  ${unit.flagManual}       ; Manual",
+          "ANB  ${unit.flagErrStop}      ; Operation Error Stop",
+          "ONDL #${cy.errorTimeout} ${cy.errFlagDirB} ; Error_${cy.label}_${cy.dirB.name}"
+        ]
+      }
+    ]
+  }
+}
