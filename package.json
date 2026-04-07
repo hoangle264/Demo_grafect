@@ -1,5 +1,5 @@
 {
-  "name": "demo-grafect",
+  "name": "demo-grafcet",
   "version": "1.0.0",
   "description": "Grafcet Studio - PLC programming tool",
   "main": "src/index.html",
