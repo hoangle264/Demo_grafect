@@ -1,0 +1,394 @@
+"use strict";
+
+// ═══════════════════════════════════════════════════════════
+//  VARIABLE TABLE
+// ═══════════════════════════════════════════════════════════
+const VT_FORMATS = ['BOOL','BYTE','WORD','DWORD','LWORD','INT','DINT','LINT','UINT','UDINT','ULINT','REAL','LREAL','STRING','TIME','DATE','TOD','DT','ARRAY'];
+
+// Returns base formats + device type names as custom formats
+function getVtFormats() {
+  const devTypes = (project.devices||[]).map(d=>d.name);
+  return [...VT_FORMATS, ...devTypes];
+}
+let vtOpen = true;
+let vtSelRows = new Set();
+let vtResizing = false, vtResizeStartY = 0, vtResizeStartH = 0;
+
+function getVars() {
+  // Always read from global state (single source of truth)
+  if(!state.vars) state.vars = [];
+  return state.vars;
+}
+function saveVars(vars) {
+  if(!activeDiagramId) return;
+  // Write into global state so flushState/saveDiagramData persists it
+  state.vars = vars;
+  saveDiagramData(activeDiagramId);   // persist immediately
+  markModified(activeDiagramId, true);
+}
+
+function toggleVarTable() {
+  vtOpen = !vtOpen;
+  const panel = document.getElementById('vartable-panel');
+  const btn = document.getElementById('pin-vt');
+  panel.classList.toggle('vt-closed', !vtOpen);
+  if(btn){ btn.textContent=vtOpen?'📌':'📍'; btn.classList.toggle('pinned',vtOpen); }
+  try{ localStorage.setItem('gf2-vt-open', vtOpen?'1':'0'); }catch(e){}
+  drawGrid();
+}
+
+function renderVarTable() {
+  const vars = getVars();
+  const filter = (document.getElementById('vt-search')?.value||'').toLowerCase();
+  const tbody = document.getElementById('vt-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+
+  const filtered = vars.map((v,i)=>({...v,_i:i})).filter(v=>
+    !filter ||
+    (v.label||'').toLowerCase().includes(filter) ||
+    (v.format||'').toLowerCase().includes(filter) ||
+    (v.address||'').toLowerCase().includes(filter) ||
+    (v.comment||'').toLowerCase().includes(filter)
+  );
+
+  if(filtered.length===0){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td colspan="5" class="vt-empty">${vars.length===0?'No variables — click <b>+ Add</b> to create one':'No match for filter'}</td>`;
+    tbody.appendChild(tr);
+  } else {
+    filtered.forEach((v,fi)=>{
+      const realIdx=v._i;
+      const tr=document.createElement('tr');
+      tr.dataset.idx=realIdx;
+      if(vtSelRows.has(realIdx)) tr.classList.add('vt-sel');
+
+      // Check if format is a device type
+      const devType = (project.devices||[]).find(d=>d.name===(v.format||''));
+      if(devType) tr.classList.add('vt-dev-instance');
+
+      // Row number
+      const tdN=document.createElement('td');
+      tdN.className='vt-rownum';
+      tdN.textContent=realIdx+1;
+      tdN.addEventListener('click',e=>{
+        if(e.shiftKey){ /* range select placeholder */ }
+        if(vtSelRows.has(realIdx)) vtSelRows.delete(realIdx); else vtSelRows.add(realIdx);
+        renderVarTable(); updateVtDelBtn();
+      });
+      tr.appendChild(tdN);
+
+      // Label
+      tr.appendChild(vtEditCell(realIdx,'label',v.label||'','lbl','text','e.g. Motor_Run'));
+      // Format
+      tr.appendChild(vtSelectCell(realIdx,'format',v.format||'BOOL'));
+      // Address — for device type instance: shows toggle + signal count, not editable here
+      if(devType){
+        const tdA=document.createElement('td');
+        const isExpanded = v._sigExpanded !== false; // default expanded
+        tdA.style.cssText='padding:0 8px;font-size:9px;color:var(--cyan);cursor:pointer;user-select:none;';
+        tdA.innerHTML=`<span class="vt-dev-expand-btn" style="display:inline-flex;align-items:center;gap:4px;">
+          <span style="font-size:10px;transition:.15s;" class="vt-dev-arrow">${isExpanded?'▾':'▸'}</span>
+          <span style="opacity:.7;">${(devType.signals||[]).length} signal${(devType.signals||[]).length!==1?'s':''}</span>
+        </span>`;
+        tdA.addEventListener('click', e=>{
+          e.stopPropagation();
+          const vars=getVars();
+          if(vars[realIdx]){
+            vars[realIdx]._sigExpanded = !(vars[realIdx]._sigExpanded !== false);
+            saveVars(vars);
+            renderVarTable();
+          }
+        });
+        tr.appendChild(tdA);
+      } else {
+        tr.appendChild(vtEditCell(realIdx,'address',v.address||'','addr','text','%MX0.0'));
+      }
+      // Comment
+      tr.appendChild(vtEditCell(realIdx,'comment',v.comment||'','comment','text',''));
+
+      tbody.appendChild(tr);
+
+      // If device type instance → render signal sub-rows (collapsible)
+      if(devType && v._sigExpanded !== false){
+        if(!v.signalAddresses) v.signalAddresses={};
+        (devType.signals||[]).forEach(sig=>{
+          const subTr=document.createElement('tr');
+          subTr.className='vt-dev-signal-row';
+          const vc={Input:'vt-input',Output:'vt-output',Var:'vt-var'}[sig.varType]||'vt-var';
+          const vs={Input:'IN',Output:'OUT',Var:'VAR'}[sig.varType]||'VAR';
+          const tc={Bool:'sig-bool',Int:'sig-int',Real:'sig-real',Word:'sig-word',DWord:'sig-word',Time:'sig-word'}[sig.dataType]||'sig-bool';
+
+          // col1: indent + signal name
+          const tdSN=document.createElement('td');
+          tdSN.colSpan=1;
+          tdSN.style.cssText='padding:0;';
+          tdSN.innerHTML=`<div class="vt-sig-num"></div>`;
+          subTr.appendChild(tdSN);
+
+          const tdSLabel=document.createElement('td');
+          tdSLabel.innerHTML=`<div class="vt-sig-label">
+            <span class="vt-sig-indent">└</span>
+            <span class="vt-sig-name">${esc2(v.label||'?')}.${esc2(sig.name)}</span>
+            <span class="sdcol-type ${tc}" style="margin-left:5px;">${esc2(sig.dataType)}</span>
+            <span class="sdcol-io ${vc}" style="margin-left:3px;">${vs}</span>
+          </div>`;
+          subTr.appendChild(tdSLabel);
+
+          // col3: DATA TYPE — read-only, shows device type
+          const tdSFmt=document.createElement('td');
+          tdSFmt.innerHTML=`<span style="font-size:9px;color:var(--text3);padding:0 8px;">${esc2(devType.name)}</span>`;
+          subTr.appendChild(tdSFmt);
+
+          // col4: ADDRESS — editable per-signal
+          const tdSAddr=document.createElement('td');
+          const addrInp=document.createElement('input');
+          addrInp.type='text';
+          addrInp.className='vt-cell addr vt-sig-addr';
+          addrInp.value=v.signalAddresses[sig.id]||'';
+          addrInp.placeholder=sig.varType==='Input'?'%IX0.0':sig.varType==='Output'?'%QX0.0':'%MX0.0';
+          addrInp.addEventListener('change',()=>{
+            const vars=getVars();
+            if(vars[realIdx]){
+              if(!vars[realIdx].signalAddresses) vars[realIdx].signalAddresses={};
+              vars[realIdx].signalAddresses[sig.id]=addrInp.value;
+              saveVars(vars);
+            }
+          });
+          tdSAddr.appendChild(addrInp);
+          subTr.appendChild(tdSAddr);
+
+          // col5: COMMENT — from signal definition (read-only hint)
+          const tdSCmt=document.createElement('td');
+          tdSCmt.innerHTML=`<span class="vt-sig-cmt">${esc2(sig.comment||'')}</span>`;
+          subTr.appendChild(tdSCmt);
+
+          tbody.appendChild(subTr);
+        });
+      }
+    });
+  }
+  // Update count
+  const cnt = document.querySelector('.vt-count');
+  if(cnt) cnt.textContent = vars.length+' var'+(vars.length!==1?'s':'')+(filter?' ('+filtered.length+' shown)':'');
+}
+
+function vtEditCell(idx, field, val, cls, type, ph) {
+  const td = document.createElement('td');
+  const inp = document.createElement('input');
+  inp.type = type; inp.className = 'vt-cell '+cls;
+  inp.value = val; inp.placeholder = ph;
+  inp.addEventListener('change', ()=>{
+    const vars=getVars(); if(vars[idx]) vars[idx][field]=inp.value; saveVars(vars);
+  });
+  inp.addEventListener('keydown', e=>{
+    if(e.key==='Tab'){ e.preventDefault(); focusNextCell(idx, field, e.shiftKey); }
+    if(e.key==='Enter'){ e.preventDefault(); if(e.ctrlKey||e.metaKey) vtAddRow(); else focusNextRow(idx, field); }
+    if(e.key==='Delete'&&e.ctrlKey){ e.preventDefault(); vtDeleteRow(idx); }
+  });
+  td.appendChild(inp); return td;
+}
+
+function vtSelectCell(idx, field, val) {
+  const td = document.createElement('td');
+  const sel = document.createElement('select');
+  sel.className = 'vt-select';
+
+  // Group 1: primitive types
+  const grpPrim = document.createElement('optgroup');
+  grpPrim.label = 'Primitive';
+  VT_FORMATS.forEach(f=>{
+    const o=document.createElement('option');
+    o.value=f; o.textContent=f;
+    if(f===val) o.selected=true;
+    grpPrim.appendChild(o);
+  });
+  sel.appendChild(grpPrim);
+
+  // Group 2: device types (if any)
+  const devTypes = (project.devices||[]);
+  if(devTypes.length){
+    const grpDev = document.createElement('optgroup');
+    grpDev.label = '── Device Types ──';
+    devTypes.forEach(d=>{
+      const o=document.createElement('option');
+      o.value=d.name; o.textContent='❖ '+d.name;
+      if(d.name===val) o.selected=true;
+      grpDev.appendChild(o);
+    });
+    sel.appendChild(grpDev);
+  }
+
+  sel.addEventListener('change',()=>{
+    const vars=getVars();
+    if(vars[idx]){
+      vars[idx].format=sel.value;
+      // If switching to device type, init signalAddresses map
+      const dev=(project.devices||[]).find(d=>d.name===sel.value);
+      if(dev){
+        if(!vars[idx].signalAddresses) vars[idx].signalAddresses={};
+        (dev.signals||[]).forEach(s=>{ if(!(s.id in vars[idx].signalAddresses)) vars[idx].signalAddresses[s.id]=''; });
+        vars[idx]._sigExpanded = true; // auto-expand when first selecting a device type
+      } else {
+        delete vars[idx].signalAddresses;
+        delete vars[idx]._sigExpanded;
+      }
+    }
+    saveVars(vars); renderVarTable();
+  });
+  sel.addEventListener('keydown',e=>{ if(e.key==='Tab'){e.preventDefault();focusNextCell(idx,field,e.shiftKey);} });
+  td.appendChild(sel);
+
+  // Color-hint if device type selected
+  const isDevType = (project.devices||[]).some(d=>d.name===val);
+  if(isDevType) sel.style.color='var(--cyan)';
+
+  return td;
+}
+
+function focusNextCell(rowIdx, field, reverse) {
+  const order=['label','format','address','comment'];
+  const fi=order.indexOf(field);
+  const nextField = reverse ? order[fi-1] : order[fi+1];
+  if(nextField) {
+    const tr=document.querySelector(`#vt-tbody tr[data-idx="${rowIdx}"]`);
+    if(tr){ const inputs=tr.querySelectorAll('input,select'); const ni=order.indexOf(nextField); if(inputs[ni]) inputs[ni].focus(); }
+  } else {
+    focusNextRow(rowIdx, reverse?'comment':'label', reverse);
+  }
+}
+function focusNextRow(rowIdx, field, reverse=false) {
+  const vars=getVars();
+  const next = reverse ? rowIdx-1 : rowIdx+1;
+  if(next>=0&&next<vars.length){ const tr=document.querySelector(`#vt-tbody tr[data-idx="${next}"]`);if(tr){const inp=tr.querySelector('input');if(inp)inp.focus();} }
+}
+
+function vtAddRow(after=-1) {
+  const vars=getVars();
+  const newRow={label:'',format:'BOOL',address:'',comment:''};
+  if(after>=0&&after<vars.length) vars.splice(after+1,0,newRow);
+  else vars.push(newRow);
+  saveVars(vars); renderVarTable();
+  // Focus the new row label
+  setTimeout(()=>{
+    const newIdx=after>=0?after+1:vars.length-1;
+    const tr=document.querySelector(`#vt-tbody tr[data-idx="${newIdx}"]`);
+    if(tr){ const inp=tr.querySelector('input');if(inp)inp.focus(); }
+  },50);
+}
+
+function vtDeleteSelected() {
+  if(vtSelRows.size===0) return;
+  const vars=getVars();
+  const sorted=[...vtSelRows].sort((a,b)=>b-a);
+  sorted.forEach(i=>vars.splice(i,1));
+  vtSelRows.clear();
+  saveVars(vars); renderVarTable(); updateVtDelBtn();
+}
+function vtDeleteRow(idx) {
+  const vars=getVars(); vars.splice(idx,1);
+  vtSelRows.delete(idx);
+  saveVars(vars); renderVarTable();
+}
+function updateVtDelBtn() {
+  const btn=document.getElementById('vt-del-btn');
+  if(btn){ btn.disabled=vtSelRows.size===0; }
+}
+
+function vtExportCSV() {
+  const vars=getVars();
+  const rows=[['Label','DataFormat','Address','Comment']];
+  vars.forEach(v=>{
+    const devType=(project.devices||[]).find(d=>d.name===(v.format||''));
+    if(devType){
+      // Device instance: one header row (no address) + one sub-row per signal
+      rows.push([v.label||'', v.format||'', '', v.comment||'']);
+      (devType.signals||[]).forEach(sig=>{
+        const addr=(v.signalAddresses||{})[sig.id]||'';
+        const sigLabel=(v.label||'?')+'.'+sig.name;
+        rows.push([sigLabel, sig.dataType||'Bool', addr, sig.comment||'']);
+      });
+    } else {
+      rows.push([v.label||'', v.format||'', v.address||'', v.comment||'']);
+    }
+  });
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const diagName=project.diagrams.find(d=>d.id===activeDiagramId)?.name||'diagram';
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=project.name.replace(/\s+/g,'_')+'_'+diagName.replace(/\s+/g,'_')+'_vars.csv';a.click();
+  toast('✓ Exported '+vars.length+' variables');
+}
+function vtImportCSV() {
+  const inp=document.createElement('input');inp.type='file';inp.accept='.csv';
+  inp.onchange=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const lines=ev.target.result.split(/\r?\n/).filter(l=>l.trim());
+        const vars=[];
+        lines.forEach((line,li)=>{
+          if(li===0&&line.toLowerCase().includes('label')) return; // skip header
+          const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,'').replace(/""/g,'"'));
+          if(cols.length>=1&&cols[0]) vars.push({label:cols[0]||'',format:cols[1]||'BOOL',address:cols[2]||'',comment:cols[3]||''});
+        });
+        const existing=getVars();
+        saveVars([...existing,...vars]);
+        renderVarTable();
+        toast('✓ Imported '+vars.length+' variables');
+      }catch(err){toast('⚠ CSV parse error: '+err.message);}
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+}
+
+// Variable table resize drag
+function initVtResize() {
+  const handle=document.getElementById('vt-resize');
+  if(!handle) return;
+  handle.addEventListener('mousedown',e=>{
+    e.preventDefault(); vtResizing=true;
+    vtResizeStartY=e.clientY;
+    vtResizeStartH=document.getElementById('vartable-panel').offsetHeight;
+    document.addEventListener('mousemove',onVtResizeMove);
+    document.addEventListener('mouseup',onVtResizeUp);
+  });
+}
+function onVtResizeMove(e){
+  if(!vtResizing)return;
+  const delta=vtResizeStartY-e.clientY;
+  const newH=Math.max(80,Math.min(600,vtResizeStartH+delta));
+  document.getElementById('vartable-panel').style.height=newH+'px';
+  drawGrid();
+}
+function onVtResizeUp(){
+  vtResizing=false;
+  document.removeEventListener('mousemove',onVtResizeMove);
+  document.removeEventListener('mouseup',onVtResizeUp);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('load', ()=>{
+  init();
+  initVtResize();
+  // Restore var table open state
+  const vts=localStorage.getItem('gf2-vt-open');
+  if(vts==='0'){ vtOpen=true; toggleVarTable(); }
+  setTimeout(fitView, 200);
+  renderVarTable();
+});
+document.getElementById('modal-input').addEventListener('keydown', e=>{ if(e.key==='Enter') confirmRename(); });
+// Unit modal enter
+document.addEventListener('DOMContentLoaded',()=>{
+  const ui=document.getElementById('modal-unit-name');
+  if(ui) ui.addEventListener('keydown',e=>{ if(e.key==='Enter') confirmUnit(); });
+  // Meta modal live preview
+  ['meta-name','meta-machine','meta-unit','meta-mode','meta-dtype'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('input',updateMetaCodePath);
+  });
+});
