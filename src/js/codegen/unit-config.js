@@ -767,6 +767,7 @@ function cgUCBuildContext(unitConfig) {
     cylinders:    cylinders,
     originSteps:  originSteps,
     stationFlows: stationFlows,
+    deviceList:   deviceList,
     // v3: expose warnings để entry point chèn vào output
     warnings:     ucBuildWarnings({ unit, cylinders, originSteps, stationFlows })
   };
@@ -1201,6 +1202,7 @@ function ucRegisterHandlebarsHelpers() {
   Handlebars.registerHelper('pad', function(addr) {
     return new Handlebars.SafeString(ucPad(addr != null ? addr : ''));
   });
+  Handlebars.registerHelper('eq', function(a, b) { return a === b; });
   Handlebars.__ucHelpersRegistered = true;
 }
 
@@ -1225,7 +1227,41 @@ function ucLoadTemplates() {
         UC_TEMPLATE_CACHE[name] = Handlebars.compile(src);
       });
   });
-  return Promise.all(promises);
+
+  // Load main-output.hbs (modular dispatcher) and device partials.
+  // These are optional — failure is logged but does not reject the overall promise.
+  const mainOutputPromise = fetch(base + 'main-output.hbs')
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' loading main-output.hbs');
+      return res.text();
+    })
+    .then(function(src) {
+      UC_TEMPLATE_CACHE['main-output'] = Handlebars.compile(src);
+    })
+    .catch(function(err) {
+      console.warn('[unit-config] main-output.hbs not loaded:', err.message);
+    });
+
+  const devicePartials = [
+    { name: 'device_cylinder', file: 'devices/cylinder.hbs' },
+    { name: 'device_servo',    file: 'devices/servo.hbs' },
+    { name: 'device_motor',    file: 'devices/motor.hbs' },
+  ];
+  const partialPromises = devicePartials.map(function(p) {
+    return fetch(base + p.file)
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' loading ' + p.file);
+        return res.text();
+      })
+      .then(function(src) {
+        Handlebars.registerPartial(p.name, src);
+      })
+      .catch(function(err) {
+        console.warn('[unit-config] partial ' + p.name + ' not loaded:', err.message);
+      });
+  });
+
+  return Promise.all([...promises, mainOutputPromise, ...partialPromises]);
 }
 
 /** Kiểm tra tất cả 5 template đã được cache chưa */
@@ -1359,9 +1395,29 @@ function cgUCBuildTemplateContext(ctx) {
 
   const firstCyLabel = cys.length > 0 ? cys[0].label : 'CY';
 
+  // ── Build unified devices array for main-output.hbs ──────────────────────
+  // Cylinders use their enriched objects; servo/motor use raw deviceList props.
+  // Every item must carry an explicit `kind` so that the eq helper works.
+  const cylinderMap = {};
+  cylinders.forEach(function(cy) { cylinderMap[cy.id] = cy; });
+  const rawDeviceList = ctx.deviceList || cylinders.map(function(cy) {
+    return { kind: 'cylinder', id: cy.id };
+  });
+  const devices = rawDeviceList.map(function(dev) {
+    const kind = dev.kind || 'cylinder';
+    if (kind === 'cylinder') {
+      const enriched = cylinderMap[dev.id];
+      if (enriched) return Object.assign({ kind: 'cylinder' }, enriched);
+      return Object.assign({ kind: 'cylinder' }, dev);
+    }
+    // servo / motor: pass through raw JSON props with kind tag
+    return Object.assign({ kind: kind }, dev);
+  });
+
   return {
     unit:              u,
     cylinders:         cylinders,
+    devices:           devices,
     cysWithOut:        cysWithOutEnriched,
     hasCylinders:      cys.length > 0,
     isSingleCylinder:  cys.length === 1,
@@ -1456,7 +1512,10 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
     lines.push(...(ucApplyTemplate('manual', tplCtx) || cgUCGenerateManual(ctx)));
     lines.push(...(ucApplyTemplate('origin', tplCtx) || cgUCGenerateOrigin(ctx)));
     lines.push(...(ucApplyTemplate('auto',   tplCtx) || cgUCGenerateAuto(ctx)));
-    lines.push(...(ucApplyTemplate('output', tplCtx) || cgUCGenerateOutput(ctx)));
+    // Prefer modular main-output (dispatches to device partials) over legacy output
+    lines.push(...(ucApplyTemplate('main-output', tplCtx) ||
+                   ucApplyTemplate('output',      tplCtx) ||
+                   cgUCGenerateOutput(ctx)));
   } else {
     lines.push(...cgUCGenerateError(ctx));
     lines.push(...cgUCGenerateManual(ctx));
