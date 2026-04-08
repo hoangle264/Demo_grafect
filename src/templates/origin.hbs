@@ -1,0 +1,46 @@
+;<h1/>Origin
+{{#if unit.btnStart}}
+LDP  {{pad unit.btnStart}}; btnStart
+{{/if}}
+{{#if unit.hmiStart}}
+ORP  {{pad unit.hmiStart}}; Hmi_{{{unit.label}}}_start
+{{/if}}
+ANB  {{pad unit.flagManual}}; Manual
+ANB  {{pad unit.flagHomed}}; Homed
+OR   {{pad unit.flagOrigin}}; Origin
+AND  {{pad unit.flagError}}; Error
+{{#if unit.eStop}}
+ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
+{{/if}}
+{{#if unit.hmiStop}}
+ANB  {{pad unit.hmiStop}}; Hmi {{{unit.label}}} _stop
+{{/if}}
+OUT  {{pad unit.flagOrigin}}; Origin
+{{#if hasOriginSteps}}
+{{#each originSteps}}
+;{{{actionLabel}}}
+{{#if isFirst}}
+LD   {{pad ../unit.flagOrigin}}; Origin
+ANB  {{pad ../unit.flagHomed}}; Homed
+ANB  {{pad ../unit.flagError}}; Error
+{{else}}
+LD   {{pad prevCmpAddr}}; {{{prevActionLabel}}} Cmp
+ANB  {{pad ../unit.flagError}}; Error
+{{/if}}
+{{#if extraCondition}}
+{{{extraCondition}}}
+{{/if}}
+SET  {{pad addr}}; {{{actionLabel}}}
+LD   {{pad addr}}; {{{actionLabel}}}
+{{#if sensor}}
+AND  {{pad sensor}}; {{{sensorLabel}}}
+{{/if}}
+SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+{{/each}}
+LD   {{pad lastOriginStep.cmpAddr}}; {{{lastOriginStep.actionLabel}}} Cmp
+SET  {{pad unit.flagHomed}}; Homed
+LD   {{pad unit.flagHomed}}; Homed
+{{#if unit.outHomed}}
+OUT  {{pad unit.outHomed}}; {{{unit.label}}}  homed
+{{/if}}
+{{/if}}

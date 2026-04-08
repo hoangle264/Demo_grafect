@@ -1,0 +1,52 @@
+;<h1/>Auto
+{{#if unit.btnStart}}
+LDP  {{pad unit.btnStart}}; btnStart
+{{/if}}
+{{#if unit.hmiStart}}
+ORP  {{pad unit.hmiStart}}; Hmi_{{{unit.label}}}_start
+{{/if}}
+AND  {{pad unit.flagHomed}}; Homed
+OR   {{pad unit.flagAuto}}; Auto
+AND  {{pad unit.flagError}}; Error
+{{#if unit.eStop}}
+ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
+{{/if}}
+{{#if unit.hmiStop}}
+ANB  {{pad unit.hmiStop}}; Hmi infeed _stop
+{{/if}}
+OUT  {{pad unit.flagAuto}}; Auto
+{{#if unit.autoTriggerAddr}}
+LD   {{pad unit.flagHomed}}; Homed
+AND  {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagManual}}; Manual
+ANB  {{pad unit.flagError}}; Error
+SET  {{pad unit.autoTriggerAddr}}
+{{/if}}
+{{#each stationFlows}}
+;<h1/>{{{label}}}
+{{#each steps}}
+;{{{actionLabel}}}
+{{#if isFirst}}
+LD   {{pad ../../unit.flagAuto}}; Auto
+AND  {{pad ../../unit.flagHomed}}; Homed
+ANB  {{pad ../../unit.flagError}}; Error
+SET  {{pad addr}}; {{{actionLabel}}}
+{{else}}
+LD   {{pad prevCmpAddr}}; {{{prevActionLabel}}} Cmp
+ANB  {{pad ../../unit.flagError}}; Error
+{{#if extraCondition}}
+{{{extraCondition}}}
+{{/if}}
+SET  {{pad addr}}; {{{actionLabel}}}
+{{/if}}
+LD   {{pad addr}}; {{{actionLabel}}}
+{{#if sensor}}
+AND  {{pad sensor}}; {{{sensorLabel}}}
+{{/if}}
+SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+{{/each}}
+LD   {{pad lastStep.cmpAddr}}; {{{lastStep.actionLabel}}} Cmp
+DIFU {{pad endPulseAddr}}; Sequence 1 End
+LD   {{pad endPulseAddr}}; Sequence 1 End
+ZRES {{{steps.[0].addr}}} {{{resetEndAddr}}} ; {{{lastStep.actionLabel}}} Cmp
+{{/each}}
