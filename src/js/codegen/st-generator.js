@@ -4,6 +4,86 @@
 //  IEC 61131-3 ST — DEMO / STUB
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── StepRenderer ─────────────────────────────────────────────────────────────
+// Responsible for rendering the IL/ST code blocks for a single Step.
+// Separating rendering from sequence traversal means the output format can be
+// changed here (e.g. SET/RST → CASE statement) without touching the generator.
+const StepRenderer = {
+  /**
+   * Render the two logic blocks for one Step.
+   *
+   * Block 1 – Activation : prevDoneVar AND activationCond  → SET _StepXX_exe
+   * Block 2 – Completion : _StepXX_exe AND feedbackCond   → SET _StepXX_done
+   *
+   * @param {Object}      params
+   * @param {string}      params.stepNum        Zero-padded step number ('01', '02', …)
+   * @param {string|null} params.prevDoneVar     Done-flag of the preceding step, or null for initial
+   * @param {string|null} params.activationCond  Transition condition (may contain ' AND ' for multiple parts)
+   * @param {string|null} params.feedbackCond    Device feedback / sensor signal that closes the step
+   * @param {string}      [params.stepLabel]     Optional human-readable label for comments
+   * @returns {string[]} Array of IL code lines
+   */
+  renderStepLogic({ stepNum, prevDoneVar, activationCond, feedbackCond, stepLabel }) {
+    const execVar = `_Step${stepNum}_exe`;
+    const doneVar = `_Step${stepNum}_done`;
+    const lines = [];
+
+    const labelSuffix = stepLabel ? ` — ${stepLabel}` : '';
+    lines.push(`(* --- Step ${stepNum}${labelSuffix} --- *)`);
+
+    // Block 1: Activation ─────────────────────────────────────────────────────
+    // Split a compound activationCond such as 'Auto_Mode AND Start_Button'
+    // into individual AND instructions.
+    const activParts = activationCond
+      ? activationCond.split(/\s+AND\s+/).map(s => s.trim()).filter(Boolean)
+      : [];
+
+    if (prevDoneVar) {
+      lines.push(`LD  ${prevDoneVar}`);
+      activParts.forEach(p => lines.push(`AND ${p}`));
+    } else if (activParts.length > 0) {
+      // Initial step: load first activation condition directly
+      lines.push(`LD  ${activParts[0]}`);
+      activParts.slice(1).forEach(p => lines.push(`AND ${p}`));
+    } else {
+      lines.push(`LD  TRUE`);
+    }
+    lines.push(`SET ${execVar}`);
+    lines.push('');
+
+    // Block 2: Execution & Feedback ───────────────────────────────────────────
+    lines.push(`LD  ${execVar}`);
+    if (feedbackCond) {
+      lines.push(`AND ${feedbackCond}`);
+    }
+    lines.push(`SET ${doneVar}`);
+    lines.push('');
+
+    return lines;
+  },
+
+  /**
+   * Render a cleanup block that resets all _exe and _done flags when the
+   * last step's done-flag is set, clearing the cycle for the next run.
+   *
+   * @param {string}   triggerVar  Done-flag of the final step (e.g. '_Step05_done')
+   * @param {string[]} allVars     All _exe and _done variable names to reset
+   * @returns {string[]} Array of IL code lines
+   */
+  renderCleanupBlock(triggerVar, allVars) {
+    const lines = [];
+    lines.push('(* --- Cleanup: Reset all Step flags at end of cycle --- *)');
+    lines.push(`LD  ${triggerVar}`);
+    allVars.forEach(v => lines.push(`RST ${v}`));
+    lines.push('');
+    return lines;
+  },
+};
+
+// ─── Generator ────────────────────────────────────────────────────────────────
+// Acts as the orchestrator: walks the sequence and delegates rendering to
+// StepRenderer.  No step-level formatting lives here.
+
 function generateSTDemo(diagIds, opts) {
   const lines = [];
   lines.push('(* ═══════════════════════════════════════════════════════');
@@ -37,73 +117,77 @@ function generateSTDemo(diagIds, opts) {
       return v?.address || varOrAddr;
     }
 
-    sequence.forEach((item, idx) => {
+    // Collect all flag variables for the end-of-cycle cleanup block.
+    const allStepVars = [];
+
+    sequence.forEach((item) => {
       const { step, inTrans, outTrans } = item;
       const sn = String(step.number).padStart(2, '0');
-      const execVar = `_Step${sn}_exec`;
-      const doneVar = `_Step${sn}_done`;
-      const lbl = step.label ? ' (* ' + step.label + ' *)' : '';
 
-      lines.push(`(* Step ${sn}${step.label ? ' — ' + step.label : ''} *)`);
+      // ── Determine prevDoneVar ──────────────────────────────────────────────
+      let prevDoneVar = null;
+      if (!step.initial && inTrans) {
+        const prevSteps = resolveStepsThrough(
+          inTrans.id, 'upstream', s.connections || [], s.steps || [], s.parallels || []
+        );
+        if (prevSteps.length > 0) {
+          prevDoneVar = prevSteps
+            .map(ps => `_Step${String(ps.number).padStart(2, '0')}_done`)
+            .join(' AND ');
+        }
+      }
 
-      // Activation
+      // ── Determine activationCond ───────────────────────────────────────────
+      let activationCond = null;
       if (step.initial) {
-        lines.push(`IF NOT ${execVar} AND NOT ${doneVar} THEN`);
+        // Initial step: combine auto/mode bit with the optional start transition.
         const modeBit = cgFindModeBit(vars);
         const cond = inTrans?.condition?.trim();
         const parts = [];
-        if (modeBit) parts.push(modeBit.replace(/%/g,'').replace(/\./g,'_'));
-        if (cond && cond !== '1') parts.push(resolveAddr(cond)?.replace(/%/g,'').replace(/\./g,'_') || cond);
-        lines.push(`  IF ${parts.length ? parts.join(' AND ') : 'TRUE'} THEN`);
-      } else {
-        const prevCond = inTrans ? (() => {
-          const prevSteps = resolveStepsThrough(
-            inTrans.id, 'upstream', s.connections||[], s.steps||[], s.parallels||[]
-          );
-          return prevSteps.map(ps =>
-            `_Step${String(ps.number).padStart(2,'0')}_done`
-          ).join(' AND ');
-        })() : 'FALSE';
-        const transCond = inTrans?.condition?.trim();
-        const tAddr = transCond && transCond !== '1'
-          ? (resolveAddr(transCond)?.replace(/%/g,'').replace(/\./g,'_') || transCond)
-          : null;
-        lines.push(`IF NOT ${execVar} AND NOT ${doneVar} THEN`);
-        lines.push(`  IF ${prevCond}${tAddr ? ' AND ' + tAddr : ''} THEN`);
-      }
-      lines.push(`    ${execVar} := TRUE;`);
-      lines.push(`  END_IF;`);
-      lines.push(`END_IF;`);
-      lines.push('');
-
-      // Actions
-      const actions = step.actions || [];
-      if (actions.length) {
-        lines.push(`IF ${execVar} THEN`);
-        actions.forEach(act => {
-          if (!act.variable && !act.address) return;
-          const addr = (resolveAddr(act.address || act.variable) || act.variable || '')
-            .replace(/%/g,'').replace(/\./g,'_');
-          const q = act.qualifier || 'N';
-          if (q === 'N')  lines.push(`  ${addr} := TRUE; (* N *)`);
-          if (q === 'S')  lines.push(`  ${addr} := TRUE; (* S — Set *)`);
-          if (q === 'R')  lines.push(`  ${addr} := FALSE; (* R — Reset *)`);
-        });
-        // Completion condition
-        if (outTrans) {
-          const cond = outTrans.condition?.trim();
-          const ca = cond && cond !== '1'
-            ? (resolveAddr(cond)?.replace(/%/g,'').replace(/\./g,'_') || cond)
-            : 'TRUE';
-          lines.push(`  IF ${ca} THEN`);
-          lines.push(`    ${doneVar} := TRUE;`);
-          lines.push(`    ${execVar} := FALSE;`);
-          lines.push(`  END_IF;`);
+        if (modeBit) parts.push(modeBit.replace(/%/g, '').replace(/\./g, '_'));
+        if (cond && cond !== '1') {
+          parts.push(resolveAddr(cond)?.replace(/%/g, '').replace(/\./g, '_') || cond);
         }
-        lines.push(`END_IF;`);
-        lines.push('');
+        activationCond = parts.length ? parts.join(' AND ') : null;
+      } else {
+        const transCond = inTrans?.condition?.trim();
+        if (transCond && transCond !== '1') {
+          activationCond = resolveAddr(transCond)?.replace(/%/g, '').replace(/\./g, '_') || transCond;
+        }
       }
+
+      // ── Determine feedbackCond ─────────────────────────────────────────────
+      let feedbackCond = null;
+      if (outTrans) {
+        const cond = outTrans.condition?.trim();
+        if (cond && cond !== '1') {
+          feedbackCond = resolveAddr(cond)?.replace(/%/g, '').replace(/\./g, '_') || cond;
+        }
+      }
+
+      // ── Delegate rendering to StepRenderer ────────────────────────────────
+      const stepLines = StepRenderer.renderStepLogic({
+        stepNum: sn,
+        prevDoneVar,
+        activationCond,
+        feedbackCond,
+        stepLabel: step.label,
+      });
+      lines.push(...stepLines);
+
+      allStepVars.push(`_Step${sn}_exe`, `_Step${sn}_done`);
     });
+
+    // ── End-of-cycle cleanup block ─────────────────────────────────────────
+    if (sequence.length > 0) {
+      const lastStep = sequence[sequence.length - 1].step;
+      const lastSn = String(lastStep.number).padStart(2, '0');
+      const cleanupLines = StepRenderer.renderCleanupBlock(
+        `_Step${lastSn}_done`,
+        allStepVars
+      );
+      lines.push(...cleanupLines);
+    }
 
     mrOffset += sequence.length * 2 + 2;
   });
@@ -115,4 +199,3 @@ function generateSTDemo(diagIds, opts) {
     stats: `[DEMO] ${diagIds.length} diagram(s) · IEC ST`
   };
 }
-
