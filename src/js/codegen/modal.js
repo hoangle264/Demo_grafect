@@ -76,7 +76,7 @@ function showGenerateCodeModal() {
             <input type="file" id="uc-unit-file" accept=".json"
               style="font-size:10px;color:var(--cyan);background:var(--bg);
               border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
-              onchange="cgUCLoadFile('uc-unit-file', function(d){ UC_UNIT_CONFIG=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
+              onchange="cgUCLoadFile('uc-unit-file', function(d){ UC_UNIT_CONFIG=d; cgUCUpdateStatus(); cgUCBuildUnitSelector(); cgUpdatePreview(); })">
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <label style="font-size:9px;color:var(--text3);width:110px;">Cylinder Types: <span style="font-size:8px;">(optional)</span></label>
@@ -91,6 +91,11 @@ function showGenerateCodeModal() {
               style="font-size:10px;color:var(--cyan);background:var(--bg);
               border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
               onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
+          </div>
+          <!-- Unit selector từ project canvas -->
+          <div id="uc-unit-selector" style="display:none;margin-top:4px;">
+            <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">CHỌN UNIT TRONG PROJECT</div>
+            <div id="uc-unit-radio-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
           </div>
           <div id="uc-status" style="font-size:9px;color:var(--text3);margin-top:2px;"></div>
         </div>
@@ -133,7 +138,54 @@ function showGenerateCodeModal() {
 
   document.body.appendChild(el);
   cgBuildUnitList();
+  cgUCBuildUnitSelector();
   cgUpdatePreview();
+}
+
+// ─── Build unit selector cho Unit Config mode ─────────────────────────────────
+function cgUCBuildUnitSelector() {
+  const wrap    = document.getElementById('uc-unit-radio-list');
+  const section = document.getElementById('uc-unit-selector');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const units    = (project && project.units) || [];
+  const allDiags = (project && project.diagrams) || [];
+  const hasOrphans = allDiags.some(d => !d.unitId);
+
+  const items = [];
+  units.forEach(u => {
+    const count = allDiags.filter(d => d.unitId === u.id).length;
+    items.push({ id: u.id, label: u.name || u.id, count });
+  });
+  if (hasOrphans) {
+    items.push({ id: '__none__', label: '(No unit)', count: allDiags.filter(d => !d.unitId).length });
+  }
+
+  if (!items.length) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+
+  items.forEach((item, i) => {
+    const lbl = document.createElement('label');
+    lbl.className = 'cg-radio-lbl';
+    lbl.innerHTML = `<input type="radio" name="uc-unit-radio" value="${item.id}"
+      onchange="cgUpdatePreview()">${esc2(item.label)}
+      <span style="color:var(--text3);font-size:8px;margin-left:2px;">(${item.count})</span>`;
+    wrap.appendChild(lbl);
+    if (i === 0) {
+      lbl.querySelector('input').checked = true;
+    }
+  });
+
+  if (section) section.style.display = '';
+}
+
+// ─── Lấy unitId đang chọn trong UC unit selector ─────────────────────────────
+function cgUCGetSelectedUnitId() {
+  const radio = document.querySelector('#uc-unit-radio-list input[name="uc-unit-radio"]:checked');
+  return radio ? radio.value : null;
 }
 
 // ─── Build unit radio list ────────────────────────────────────────────────────
@@ -245,8 +297,9 @@ function cgUpdatePreview() {
       if (stat) stat.textContent = 'Unit Config mode — chờ load file JSON';
       return;
     }
-    const profile = PLC_PROFILES['kv-5500'];
-    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile);
+    const profile        = PLC_PROFILES['kv-5500'];
+    const selectedUnitId = cgUCGetSelectedUnitId();
+    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
     pre.textContent = result.code;
     if (stat) stat.textContent = result.stats;
     // Syntax highlight
@@ -347,8 +400,9 @@ function cgDownloadCode() {
       toast('⚠ Load Unit Config JSON trước');
       return;
     }
-    const profile = PLC_PROFILES['kv-5500'];
-    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile);
+    const profile        = PLC_PROFILES['kv-5500'];
+    const selectedUnitId = cgUCGetSelectedUnitId();
+    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
     const label   = (UC_UNIT_CONFIG.unit?.label || 'unit').replace(/\s+/g, '_');
     const blob = new Blob([result.code], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');

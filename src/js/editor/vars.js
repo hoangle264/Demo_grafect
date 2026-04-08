@@ -382,6 +382,20 @@ window.addEventListener('load', ()=>{
   renderVarTable();
 });
 document.getElementById('modal-input').addEventListener('keydown', e=>{ if(e.key==='Enter') confirmRename(); });
+
+// Hiển thị preview đường dẫn code trong modal Diagram Properties
+function updateMetaCodePath() {
+  const el = document.getElementById('meta-codepath');
+  if (!el) return;
+  const machine = (document.getElementById('meta-machine')?.value || 'Machine').trim() || 'Machine';
+  const unit    = (document.getElementById('meta-unit')?.value    || 'Unit').trim()    || 'Unit';
+  const mode    = (document.getElementById('meta-mode')?.value    || 'Auto').trim()    || 'Auto';
+  const name    = (document.getElementById('meta-name')?.value    || '').trim();
+  const dtype   = (document.getElementById('meta-dtype')?.value   || 'Main').trim();
+  const label   = name || mode;
+  el.textContent = `${machine} / ${unit} / ${mode} / ${label}  [${dtype}]`;
+}
+
 // Unit modal enter
 document.addEventListener('DOMContentLoaded',()=>{
   const ui=document.getElementById('modal-unit-name');

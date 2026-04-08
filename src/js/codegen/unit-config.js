@@ -334,7 +334,7 @@ function ucIsSNS(sigName) {
 //  - devices[] chuẩn hóa qua ucNormalizeDeviceList (tương thích v2 cylinders[]).
 //  - Admin addresses (hmiManBtn, lock, err…) tính qua ucResolveCylinderAdminAddrs.
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
-function cgUCBuildContext(unitConfig) {
+function cgUCBuildContext(unitConfig, selectedUnitId) {
   const u      = unitConfig.unit;
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
@@ -349,15 +349,24 @@ function cgUCBuildContext(unitConfig) {
   // Mode='Origin' → origin flow; Mode='Auto' hoặc không có → station flows
   const allDiags = (typeof project !== 'undefined' && project.diagrams) ? project.diagrams : [];
 
-  // Tìm unit ID trong project.units theo label
-  const unitObj = (typeof project !== 'undefined' && project.units || [])
-    .find(function(pu) { return pu.name === u.label || pu.id === u.id; });
-  const unitId = unitObj ? unitObj.id : null;
+  // Ưu tiên 1: selectedUnitId được truyền vào từ UI selector
+  // Ưu tiên 2: tìm unit trong project.units theo label/id từ JSON config
+  // Fallback: lấy tất cả diagrams (chỉ khi project chỉ có 1 unit)
+  let unitId = selectedUnitId || null;
+  if (!unitId) {
+    const unitObj = (typeof project !== 'undefined' && project.units || [])
+      .find(function(pu) { return pu.name === u.label || pu.id === u.id; });
+    unitId = unitObj ? unitObj.id : null;
+  }
 
-  // Lọc diagrams theo unitId (nếu có) hoặc lấy tất cả nếu project chỉ có 1 unit
+  // Lọc diagrams theo unitId — nếu không tìm được, lấy tất cả nếu chỉ có 1 unit
+  const hasMultipleUnits = (typeof project !== 'undefined' && (project.units || []).length > 1);
   const unitDiags = unitId
-    ? allDiags.filter(function(d) { return d.unitId === unitId; })
-    : allDiags;
+    ? allDiags.filter(function(d) {
+        if (unitId === '__none__') return !d.unitId;
+        return d.unitId === unitId;
+      })
+    : (hasMultipleUnits ? [] : allDiags);
 
   // ── Origin flow ───────────────────────────────────────────────────────────
   const originDiag = unitDiags.find(function(d) {
@@ -1192,6 +1201,11 @@ function cgUCGenerateOutput(ctx) {
 /** Cache: { error, manual, origin, auto, output } → compiled Handlebars function */
 const UC_TEMPLATE_CACHE = {};
 
+// Inject bundled templates ngay sau khi cache được khởi tạo (hỗ trợ offline file://)
+if (typeof ucInjectBundledTemplates === 'function') {
+  ucInjectBundledTemplates();
+}
+
 /**
  * Đăng ký các Handlebars helpers dùng trong template.
  * Gọi một lần trước khi compile template.
@@ -1203,6 +1217,10 @@ function ucRegisterHandlebarsHelpers() {
     return new Handlebars.SafeString(ucPad(addr != null ? addr : ''));
   });
   Handlebars.registerHelper('eq', function(a, b) { return a === b; });
+  // padStart2(n) → '01', '02', ... '09', '10', '11', ...
+  Handlebars.registerHelper('padStart2', function(n) {
+    return String((n != null ? Number(n) : 0) + 1).padStart(2, '0');
+  });
   Handlebars.__ucHelpersRegistered = true;
 }
 
@@ -1243,6 +1261,7 @@ function ucLoadTemplates() {
     });
 
   const devicePartials = [
+    { name: 'step_body',       file: 'step-body.hbs' },
     { name: 'device_cylinder', file: 'devices/cylinder.hbs' },
     { name: 'device_servo',    file: 'devices/servo.hbs' },
     { name: 'device_motor',    file: 'devices/motor.hbs' },
@@ -1436,6 +1455,11 @@ function cgUCBuildTemplateContext(ctx) {
 // ─── Tự động tải templates khi page load ─────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.addEventListener('load', function() {
+    // Nếu templates-bundle.js đã inject vào cache (chạy offline qua file://)
+    // thì bỏ qua fetch để tránh lỗi CORS
+    if (ucTemplatesReady()) {
+      return;
+    }
     ucLoadTemplates().catch(function(err) {
       console.warn('[unit-config] Handlebars templates not loaded (fallback to JS generators):', err.message);
     });
@@ -1444,7 +1468,8 @@ if (typeof window !== 'undefined') {
 
 // ─── Entry point: sinh toàn bộ code IL từ JSON config + canvas diagrams ───────
 // cylinderTypes không còn bắt buộc — giữ tham số để tương thích ngược với UI cũ.
-function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
+// selectedUnitId: nếu truyền vào, chỉ lấy diagrams của unit đó từ canvas
+function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedUnitId) {
   if (!unitConfig) {
     return { code: '; ERROR: unitConfig chưa được load.', stats: 'Error' };
   }
@@ -1454,7 +1479,7 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
     ? 'v3'
     : (unitConfig.devices != null ? 'v3' : 'v2');
 
-  const ctx = cgUCBuildContext(unitConfig);
+  const ctx = cgUCBuildContext(unitConfig, selectedUnitId);
   const pr  = profile || PLC_PROFILES['kv-5500'];
   const timestamp = new Date().toLocaleString('vi-VN');
   const unitLabel = (ctx.unit.label || '').padEnd(39);

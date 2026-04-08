@@ -564,7 +564,8 @@
 </div>
 
 
-<script src="https://cdn.jsdelivr.net/npm/handlebars@4.7.9/dist/handlebars.min.js"></script>
+<script src="js/vendor/handlebars.min.js"></script>
+<!-- CDN fallback (khi deploy lên Netlify, file local vẫn được serve) -->
 <script src="js/core/utils.js"></script>
 <script src="js/core/graph-utils.js"></script>
 <script src="js/core/store.js"></script>
@@ -582,6 +583,7 @@
 <script src="js/codegen/kv-generator.js"></script>
 <script src="js/codegen/sequence.js"></script>
 <script src="js/codegen/st-generator.js"></script>
+<script src="js/codegen/templates-bundle.js"></script>
 <script src="js/codegen/unit-config.js"></script>
 <script src="js/codegen/modal.js"></script>
 </body>

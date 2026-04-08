@@ -39,11 +39,7 @@ ANB  {{pad ../../unit.flagError}}; Error
 {{/if}}
 SET  {{pad addr}}; {{{actionLabel}}}
 {{/if}}
-LD   {{pad addr}}; {{{actionLabel}}}
-{{#if sensor}}
-AND  {{pad sensor}}; {{{sensorLabel}}}
-{{/if}}
-SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+{{> step_body}}
 {{/each}}
 LD   {{pad lastStep.cmpAddr}}; {{{lastStep.actionLabel}}} Cmp
 DIFU {{pad endPulseAddr}}; Sequence 1 End
