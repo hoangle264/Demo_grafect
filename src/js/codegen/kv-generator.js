@@ -11,6 +11,9 @@ const KV_SECTION_ORDER = ['Error', 'Manual', 'Origin', 'Auto'];
 // Width of the unit banner separator line (number of ═ characters).
 const UNIT_BANNER_WIDTH = 56;
 
+// Column width used to right-pad PLC addresses before inline comments.
+const ADDR_COLUMN_WIDTH = 12;
+
 // Matches Keyence KV / IEC address literals such as Y0.00, @MR100, %QX0.0
 const KV_ADDR_RE = /^[%@]|^[A-Z]{1,3}\d/;
 
@@ -83,6 +86,38 @@ const PLC_PROFILES = {
 //   }
 // }
 let DEVICE_LIBRARY = {};
+
+
+// ─── Default Step Templates ───────────────────────────────────────────────────
+// Each template is a multi-line string with ${key} placeholders rendered by
+// cgApplyOutputTemplate.  Lines whose placeholder resolves to an empty string
+// are automatically dropped (e.g. "AND  ${inTransition}" disappears when the
+// transition condition is trivial / unconditional).
+//
+// STEP_ACTIVATION_TEMPLATE — logic that sets the step execute bit.
+//   ${prevStepDone}  Full LD/AND block for the previous step(s) done bit(s).
+//                    For a parallel join the value contains multiple lines
+//                    (first line: address only; remaining lines: "AND  addr")
+//                    so that the template's leading "LD   " prefix stays correct.
+//   ${inTransition}  Incoming transition condition address (empty = trivial/none).
+//   ${stepExe}       Step execute (exec) MR address.
+//   ${stepNum}       Step number string, zero-padded to 2 digits by the generator.
+//   ${stepLabel}     Step label text (available for custom templates; may be empty).
+const STEP_ACTIVATION_TEMPLATE =
+  'LD   ${prevStepDone}\n' +
+  'AND  ${inTransition}\n' +
+  'SET  ${stepExe}';
+
+// STEP_FEEDBACK_TEMPLATE — logic that sets the step done bit when the outgoing
+// transition fires.
+//   ${stepExe}       Step execute MR address.
+//   ${outTransition} Outgoing transition condition address (empty = trivial/none).
+//   ${stepDone}      Step done MR address.
+//   ${stepNum}       Step number string, zero-padded to 2 digits by the generator.
+const STEP_FEEDBACK_TEMPLATE =
+  'LD   ${stepExe}\n' +
+  'AND  ${outTransition}\n' +
+  'SET  ${stepDone}';
 
 /**
  * Load (or replace) the Device Library from an object.
@@ -409,6 +444,35 @@ function cgApplyOutputTemplate(template, vars) {
   }).filter(line => line !== null).join('\n');
 }
 
+/**
+ * Build the "prevStepDone" value for STEP_ACTIVATION_TEMPLATE.
+ *
+ * For a single previous step the return value is just the done-bit address
+ * (with inline comment), so that the template's "LD   ${prevStepDone}" line
+ * expands correctly to a single LD instruction.
+ *
+ * For a parallel join (AND-join) the first entry is the bare address and each
+ * subsequent entry is prefixed "AND  " so the substitution result looks like:
+ *   LD   @MR001      ; S01 complete
+ *   AND  @MR003      ; S02 complete
+ *
+ * @param {Array}  prevSteps  Ordered array of step objects from resolveStepsThrough.
+ * @param {Object} mrMap      stepId → {exec, done}
+ * @returns {string}  Single or multi-line block (empty string if prevSteps is empty).
+ */
+function cgBuildPrevStepBlock(prevSteps, mrMap) {
+  if (!prevSteps.length) return '';
+  return prevSteps.map((ps, pi) => {
+    const pm   = mrMap[ps.id];
+    const addr = pm ? pm.done : '???';
+    const comment = `; ${cgStepRef(ps)} complete`;
+    if (pi === 0) {
+      return `${addr.padEnd(ADDR_COLUMN_WIDTH)}${comment}`;
+    }
+    return `AND  ${addr.padEnd(ADDR_COLUMN_WIDTH)}${comment}`;
+  }).join('\n');
+}
+
 // ─── Output section: 4-phase pipeline (Setup→Analysis→Mapping→Generation) ────
 function generateKVOutputSection(loadedDiags, signalActionMap) {
   const lines = [];
@@ -608,6 +672,12 @@ function generateKVDiagram(diagMeta, s, opts) {
     return varOrAddr;
   }
 
+  // ── Resolve step templates (opts override or defaults) ───────────────────
+  const activationTemplate =
+    (opts.stepTemplates && opts.stepTemplates.activation) || STEP_ACTIVATION_TEMPLATE;
+  const feedbackTemplate =
+    (opts.stepTemplates && opts.stepTemplates.feedback) || STEP_FEEDBACK_TEMPLATE;
+
   // ── Generate code per sequence item ──────────────────────────────────────
   sequence.forEach((item, idx) => {
     const { step, inTrans, outTrans, branchType } = item;
@@ -618,45 +688,44 @@ function generateKVDiagram(diagMeta, s, opts) {
     lines.push(`; ─── Step ${stepNum}${stepLbl} ${'─'.repeat(Math.max(0, 40 - stepLbl.length - 8))}`);
 
     // ── Activation condition ───────────────────────────────────────────────
+    // Build template variables: ${prevStepDone} and ${inTransition}.
+    let prevStepDoneVal;
+    let inTransitionVal;
+
     if (step.initial) {
-      // Initial step: activated by start condition or always on if first scan
-      // Use a mode flag from vars if available (first BOOL var as "Auto/Start")
+      // Initial step: activated by mode bit or first-scan pulse.
       const modeBit = cgFindModeBit(vars);
-      if (modeBit) {
-        lines.push(`LD   ${modeBit.padEnd(12)}; Initial step — mode active`);
-      } else {
-        lines.push(`LD   CR2002        ; Initial step — 1st scan pulse`);
-      }
+      prevStepDoneVal = modeBit
+        ? `${modeBit.padEnd(ADDR_COLUMN_WIDTH)}; Initial step — mode active`
+        : `CR2002        ; Initial step — 1st scan pulse`;
+      inTransitionVal = '';
+    } else if (inTrans) {
+      // Normal step: activated by previous step(s) done bit via incoming transition.
+      const prevSteps = resolveStepsThrough(
+        inTrans.id, 'upstream', connections, steps, parallels
+      );
+      // For a parallel join (AND-join) cgBuildPrevStepBlock builds a multi-line
+      // LD/AND block that expands inline inside the "LD   ${prevStepDone}" line.
+      prevStepDoneVal = cgBuildPrevStepBlock(prevSteps, mrMap);
+      const cond = inTrans.condition?.trim();
+      inTransitionVal = (cond && cond !== '1' && cond !== 'true')
+        ? `${(resolveAddr(cond) || cond).padEnd(ADDR_COLUMN_WIDTH)}; transition: ${esc2(cond)}`
+        : '';
     } else {
-      // Activated by previous step done bit
-      if (inTrans) {
-        const prevSteps = resolveStepsThrough(
-          inTrans.id, 'upstream', connections, steps, parallels
-        );
-        if (prevSteps.length === 1) {
-          const pm = mrMap[prevSteps[0].id];
-          if (pm) lines.push(`LD   ${pm.done.padEnd(12)}; ${cgStepRef(prevSteps[0])} complete`);
-          else    lines.push(`LD   ???           ; previous step`);
-        } else if (prevSteps.length > 1) {
-          // AND-join: all previous branches must be done
-          prevSteps.forEach((ps, pi) => {
-            const pm = mrMap[ps.id];
-            const inst = pi === 0 ? 'LD  ' : 'AND ';
-            if (pm) lines.push(`${inst} ${pm.done.padEnd(12)}; ${cgStepRef(ps)} complete`);
-          });
-        }
-        // AND transition condition
-        const cond = inTrans.condition?.trim();
-        if (cond && cond !== '1' && cond !== 'true') {
-          const addr = resolveAddr(cond);
-          lines.push(`AND  ${(addr||cond).padEnd(12)}; transition: ${esc2(cond)}`);
-        }
-      } else {
-        lines.push(`; WARNING: no incoming transition found for step ${stepNum}`);
-        lines.push(`LD   CR2002`);
-      }
+      lines.push(`; WARNING: no incoming transition found for step ${stepNum}`);
+      prevStepDoneVal = 'CR2002';
+      inTransitionVal = '';
     }
-    lines.push(`SET  ${mr.exec.padEnd(12)}; Step ${stepNum} execute`);
+
+    const activationVars = {
+      prevStepDone: prevStepDoneVal,
+      inTransition: inTransitionVal,
+      stepExe:      mr.exec,
+      stepNum:      stepNum,
+      stepLabel:    step.label || ''
+    };
+    cgApplyOutputTemplate(activationTemplate, activationVars)
+      .split('\n').forEach(l => lines.push(l));
     lines.push('');
 
     // ── Actions while step is active ──────────────────────────────────────
@@ -698,19 +767,20 @@ function generateKVDiagram(diagMeta, s, opts) {
     }
 
     // ── Step completion: outgoing transition → set done bit ───────────────
-    if (outTrans) {
-      const cond = outTrans.condition?.trim();
-      lines.push(`LD   ${mr.exec.padEnd(12)}; Step ${stepNum} active`);
-      if (cond && cond !== '1' && cond !== 'true') {
-        const addr = resolveAddr(cond);
-        lines.push(`AND  ${(addr||cond).padEnd(12)}; ${esc2(cond)}`);
-      }
-      lines.push(`SET  ${mr.done.padEnd(12)}; Step ${stepNum} complete`);
-    } else {
-      // Last step — reset done to allow restart (optional cycle)
-      lines.push(`LD   ${mr.exec.padEnd(12)}; Step ${stepNum} — last step`);
-      lines.push(`SET  ${mr.done.padEnd(12)}; Mark complete`);
-    }
+    // Build ${outTransition}: empty for trivial/unconditional (drops AND line).
+    const outCond = outTrans?.condition?.trim();
+    const outTransitionVal = (outCond && outCond !== '1' && outCond !== 'true')
+      ? `${(resolveAddr(outCond) || outCond).padEnd(ADDR_COLUMN_WIDTH)}; ${esc2(outCond)}`
+      : '';
+
+    const feedbackVars = {
+      stepExe:       mr.exec,
+      outTransition: outTransitionVal,
+      stepDone:      mr.done,
+      stepNum:       stepNum
+    };
+    cgApplyOutputTemplate(feedbackTemplate, feedbackVars)
+      .split('\n').forEach(l => lines.push(l));
     lines.push('');
   });
 
