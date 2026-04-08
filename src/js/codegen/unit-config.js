@@ -1199,7 +1199,7 @@ function ucRegisterHandlebarsHelpers() {
   if (typeof Handlebars === 'undefined') return;
   if (Handlebars.__ucHelpersRegistered) return;
   Handlebars.registerHelper('pad', function(addr) {
-    return new Handlebars.SafeString(String(addr || '').padEnd(12));
+    return new Handlebars.SafeString(ucPad(addr != null ? addr : ''));
   });
   Handlebars.__ucHelpersRegistered = true;
 }
