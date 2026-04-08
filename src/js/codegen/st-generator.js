@@ -12,18 +12,18 @@ const StepRenderer = {
   /**
    * Render the two logic blocks for one Step.
    *
-   * Block 1 – Activation : prevDoneVar AND activationCond  → SET _StepXX_exe
-   * Block 2 – Completion : _StepXX_exe AND feedbackCond   → SET _StepXX_done
+   * Block 1 – Activation : prevDoneVars AND activationCond  → SET _StepXX_exe
+   * Block 2 – Completion : _StepXX_exe AND feedbackCond    → SET _StepXX_done
    *
    * @param {Object}      params
-   * @param {string}      params.stepNum        Zero-padded step number ('01', '02', …)
-   * @param {string|null} params.prevDoneVar     Done-flag of the preceding step, or null for initial
-   * @param {string|null} params.activationCond  Transition condition (may contain ' AND ' for multiple parts)
-   * @param {string|null} params.feedbackCond    Device feedback / sensor signal that closes the step
-   * @param {string}      [params.stepLabel]     Optional human-readable label for comments
+   * @param {string}      params.stepNum           Zero-padded step number ('01', '02', …)
+   * @param {string[]}    params.prevDoneVars       Done-flags of all preceding steps (empty for initial step)
+   * @param {string|null} params.activationCond     Transition condition string (single resolved address)
+   * @param {string|null} params.feedbackCond       Device feedback / sensor signal that closes the step
+   * @param {string}      [params.stepLabel]        Optional human-readable label for comments
    * @returns {string[]} Array of IL code lines
    */
-  renderStepLogic({ stepNum, prevDoneVar, activationCond, feedbackCond, stepLabel }) {
+  renderStepLogic({ stepNum, prevDoneVars, activationCond, feedbackCond, stepLabel }) {
     const execVar = `_Step${stepNum}_exe`;
     const doneVar = `_Step${stepNum}_done`;
     const lines = [];
@@ -32,19 +32,15 @@ const StepRenderer = {
     lines.push(`(* --- Step ${stepNum}${labelSuffix} --- *)`);
 
     // Block 1: Activation ─────────────────────────────────────────────────────
-    // Split a compound activationCond such as 'Auto_Mode AND Start_Button'
-    // into individual AND instructions.
-    const activParts = activationCond
-      ? activationCond.split(/\s+AND\s+/).map(s => s.trim()).filter(Boolean)
-      : [];
+    // Build a list of all conditions that must be AND-ed for activation.
+    // prevDoneVars covers one or more predecessor done-flags (parallel joins).
+    // activationCond is the outgoing transition condition of those predecessors.
+    const allActivationConds = [...(prevDoneVars || [])];
+    if (activationCond) allActivationConds.push(activationCond);
 
-    if (prevDoneVar) {
-      lines.push(`LD  ${prevDoneVar}`);
-      activParts.forEach(p => lines.push(`AND ${p}`));
-    } else if (activParts.length > 0) {
-      // Initial step: load first activation condition directly
-      lines.push(`LD  ${activParts[0]}`);
-      activParts.slice(1).forEach(p => lines.push(`AND ${p}`));
+    if (allActivationConds.length > 0) {
+      lines.push(`LD  ${allActivationConds[0]}`);
+      allActivationConds.slice(1).forEach(c => lines.push(`AND ${c}`));
     } else {
       lines.push(`LD  TRUE`);
     }
@@ -120,27 +116,27 @@ function generateSTDemo(diagIds, opts) {
     // Collect all flag variables for the end-of-cycle cleanup block.
     const allStepVars = [];
 
-    sequence.forEach((item) => {
-      const { step, inTrans, outTrans } = item;
+    sequence.forEach((sequenceItem) => {
+      const { step, inTrans, outTrans } = sequenceItem;
       const sn = String(step.number).padStart(2, '0');
 
-      // ── Determine prevDoneVar ──────────────────────────────────────────────
-      let prevDoneVar = null;
+      // ── Determine prevDoneVars ─────────────────────────────────────────────
+      let prevDoneVars = [];
       if (!step.initial && inTrans) {
         const prevSteps = resolveStepsThrough(
           inTrans.id, 'upstream', s.connections || [], s.steps || [], s.parallels || []
         );
-        if (prevSteps.length > 0) {
-          prevDoneVar = prevSteps
-            .map(ps => `_Step${String(ps.number).padStart(2, '0')}_done`)
-            .join(' AND ');
-        }
+        prevDoneVars = prevSteps.map(
+          ps => `_Step${String(ps.number).padStart(2, '0')}_done`
+        );
       }
 
       // ── Determine activationCond ───────────────────────────────────────────
       let activationCond = null;
       if (step.initial) {
         // Initial step: combine auto/mode bit with the optional start transition.
+        // The mode bit acts as the activation gate; the transition condition
+        // (if any) is an additional AND condition.
         const modeBit = cgFindModeBit(vars);
         const cond = inTrans?.condition?.trim();
         const parts = [];
@@ -148,6 +144,8 @@ function generateSTDemo(diagIds, opts) {
         if (cond && cond !== '1') {
           parts.push(resolveAddr(cond)?.replace(/%/g, '').replace(/\./g, '_') || cond);
         }
+        // For the initial step there are no prevDoneVars, so push all parts as
+        // activationCond (renderStepLogic will load the first part with LD).
         activationCond = parts.length ? parts.join(' AND ') : null;
       } else {
         const transCond = inTrans?.condition?.trim();
@@ -168,7 +166,7 @@ function generateSTDemo(diagIds, opts) {
       // ── Delegate rendering to StepRenderer ────────────────────────────────
       const stepLines = StepRenderer.renderStepLogic({
         stepNum: sn,
-        prevDoneVar,
+        prevDoneVars,
         activationCond,
         feedbackCond,
         stepLabel: step.label,
