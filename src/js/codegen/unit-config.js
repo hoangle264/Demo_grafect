@@ -1181,6 +1181,211 @@ function cgUCGenerateOutput(ctx) {
   return L;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  HANDLEBARS TEMPLATE ENGINE INTEGRATION
+//  Tải các file .hbs từ thư mục templates/ để sinh code IL thay thế cho
+//  các hàm generator hardcode.  User có thể chỉnh sửa file .hbs mà không
+//  cần sửa logic JavaScript.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Cache: { error, manual, origin, auto, output } → compiled Handlebars function */
+const UC_TEMPLATE_CACHE = {};
+
+/**
+ * Đăng ký các Handlebars helpers dùng trong template.
+ * Gọi một lần trước khi compile template.
+ */
+function ucRegisterHandlebarsHelpers() {
+  if (typeof Handlebars === 'undefined') return;
+  if (Handlebars.__ucHelpersRegistered) return;
+  Handlebars.registerHelper('pad', function(addr) {
+    return new Handlebars.SafeString(String(addr || '').padEnd(12));
+  });
+  Handlebars.__ucHelpersRegistered = true;
+}
+
+/**
+ * Tải tất cả file .hbs từ thư mục templates/ (relative URL), compile và cache.
+ * Trả về Promise. Khi resolve, UC_TEMPLATE_CACHE đã có đủ 5 template.
+ */
+function ucLoadTemplates() {
+  if (typeof Handlebars === 'undefined') {
+    return Promise.reject(new Error('Handlebars not available'));
+  }
+  ucRegisterHandlebarsHelpers();
+  const names = ['error', 'manual', 'origin', 'auto', 'output'];
+  const base = 'templates/';
+  const promises = names.map(function(name) {
+    return fetch(base + name + '.hbs')
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' loading ' + name + '.hbs');
+        return res.text();
+      })
+      .then(function(src) {
+        UC_TEMPLATE_CACHE[name] = Handlebars.compile(src);
+      });
+  });
+  return Promise.all(promises);
+}
+
+/** Kiểm tra tất cả 5 template đã được cache chưa */
+function ucTemplatesReady() {
+  return !!(UC_TEMPLATE_CACHE.error && UC_TEMPLATE_CACHE.manual &&
+            UC_TEMPLATE_CACHE.origin && UC_TEMPLATE_CACHE.auto &&
+            UC_TEMPLATE_CACHE.output);
+}
+
+/**
+ * Áp dụng một template đã cache lên templateCtx.
+ * Trả về mảng string (lines) như các hàm cgUCGenerate*.
+ * Collapse consecutive blank lines (giữ nhiều nhất 1 dòng trắng liên tiếp).
+ */
+function ucApplyTemplate(name, tplCtx) {
+  const tmpl = UC_TEMPLATE_CACHE[name];
+  if (!tmpl) return null;
+  const text = tmpl(tplCtx);
+  const raw = text.split('\n').map(function(l) { return l.trimEnd(); });
+  const result = [];
+  let prevBlank = false;
+  for (let i = 0; i < raw.length; i++) {
+    const blank = raw[i].trim() === '';
+    if (blank && prevBlank) continue;
+    result.push(raw[i]);
+    prevBlank = blank;
+  }
+  return result;
+}
+
+// ─── Helper: tính stack instruction cho ALT block (Manual) ────────────────────
+function ucAltStackInst(i, n) {
+  if (n <= 1) return '';
+  if (i === 0) return 'MPS';
+  if (i === n - 2) return 'MPP';
+  if (i === n - 1) return '';
+  return 'MRD';
+}
+
+// ─── Helper: tính action label từ step object ────────────────────────────────
+function ucComputeActionLabel(step) {
+  if (!step) return '';
+  return (step.actions && step.actions.length)
+    ? step.actions.map(function(a) {
+        return (a.devLabel || '') + ' ' + ucDirFromSigName(a.sigName || '');
+      }).join(', ')
+    : (step.label || '');
+}
+
+/**
+ * cgUCBuildTemplateContext(ctx)
+ * Nhận ctx từ cgUCBuildContext và bổ sung các trường tính toán sẵn
+ * (stack instructions, pre-computed labels, booleans) để các file .hbs
+ * có thể dùng trực tiếp mà không cần logic JS trong template.
+ */
+function cgUCBuildTemplateContext(ctx) {
+  const u = ctx.unit;
+  const cys = ctx.cylinders;
+
+  // ── originBase (cho ZRES ở Manual section) ───────────────────────────────
+  const originBase = (ctx.originSteps && ctx.originSteps.length)
+    ? ctx.originSteps[0].addr : '';
+
+  // ── Enrich cylinders với altStackInst + trường output ────────────────────
+  const cylinders = cys.map(function(cy, i) {
+    const enrichedStepsDirB = (cy.stepsForDirB || []).map(function(s, si) {
+      const sLabel = (s.actions && s.actions.length)
+        ? (s.actions[0].devLabel || '') + ' ' + ucDirFromSigName(s.actions[0].sigName || '')
+        : (s.label || '');
+      return Object.assign({}, s, { sLabel: sLabel, needsORL: si > 0 });
+    });
+    const hasOutput     = !!(cy.outDirA || cy.outDirB);
+    const hasDirAOutput = !!(cy.stepDirA && cy.outDirA);
+    const hasDirBOutput = !!(enrichedStepsDirB.length > 0 && cy.outDirB);
+    return Object.assign({}, cy, {
+      altStackInst:      ucAltStackInst(i, cys.length),
+      enrichedStepsDirB: enrichedStepsDirB,
+      singleStepDirB:    enrichedStepsDirB.length === 1,
+      multiStepDirB:     enrichedStepsDirB.length > 1,
+      hasOutput:         hasOutput,
+      hasDirAOutput:     hasDirAOutput,
+      hasDirBOutput:     hasDirBOutput,
+      errTimerDirA:      !!(cy.outDirA && cy.sensorDirA && cy.errFlagDirA),
+      errTimerDirB:      !!(cy.outDirB && cy.sensorDirB && cy.errFlagDirB),
+    });
+  });
+
+  // ── cysWithOut: cylinders có địa chỉ output, bổ sung stack instructions ──
+  const cysWithOut = cylinders.filter(function(cy) {
+    return cy.outDirA || cy.outDirB;
+  });
+  const cysWithOutEnriched = cysWithOut.map(function(cy, i) {
+    const isLast = i === cysWithOut.length - 1;
+    return Object.assign({}, cy, {
+      stackBeforeDirB: isLast ? 'MPP' : 'MRD',
+      stackAfterDirB:  isLast ? ''    : 'MRD',
+    });
+  });
+
+  // ── Enrich originSteps với prevStep info và actionLabel ────────────────────
+  const originSteps = (ctx.originSteps || []).map(function(step, i) {
+    return Object.assign({}, step, {
+      actionLabel:     ucComputeActionLabel(step),
+      isFirst:         i === 0,
+      prevCmpAddr:     i > 0 ? ctx.originSteps[i - 1].cmpAddr : '',
+      prevActionLabel: i > 0 ? ucComputeActionLabel(ctx.originSteps[i - 1]) : '',
+    });
+  });
+  const lastOriginStep = originSteps.length > 0
+    ? originSteps[originSteps.length - 1] : null;
+
+  // ── Enrich stationFlows ───────────────────────────────────────────────────
+  const stationFlows = (ctx.stationFlows || []).map(function(flow) {
+    const steps = flow.steps.map(function(step, i) {
+      return Object.assign({}, step, {
+        actionLabel:     ucComputeActionLabel(step),
+        isFirst:         i === 0,
+        prevCmpAddr:     i > 0 ? flow.steps[i - 1].cmpAddr : '',
+        prevActionLabel: i > 0 ? ucComputeActionLabel(flow.steps[i - 1]) : '',
+      });
+    });
+    const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
+    const resetEndNum  = flow.baseNum + Math.max(15, flow.steps.length * 2 + 6);
+    const resetEndAddr = '@MR' + String(resetEndNum).padStart(3, '0');
+    return Object.assign({}, flow, {
+      steps:        steps,
+      lastStep:     lastStep,
+      resetEndAddr: resetEndAddr,
+    });
+  });
+
+  const firstCyLabel = cys.length > 0 ? cys[0].label : 'CY';
+
+  return {
+    unit:              u,
+    cylinders:         cylinders,
+    cysWithOut:        cysWithOutEnriched,
+    hasCylinders:      cys.length > 0,
+    isSingleCylinder:  cys.length === 1,
+    hasCysWithOut:     cysWithOut.length > 0,
+    cysWithOutMultiple: cysWithOut.length > 1,
+    showManBtnZres:    !!(u.hmiManBtnBase && u.hmiManBtnEnd),
+    originBase:        originBase,
+    originSteps:       originSteps,
+    hasOriginSteps:    originSteps.length > 0,
+    lastOriginStep:    lastOriginStep,
+    stationFlows:      stationFlows,
+    firstCyLabel:      firstCyLabel,
+  };
+}
+
+// ─── Tự động tải templates khi page load ─────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('load', function() {
+    ucLoadTemplates().catch(function(err) {
+      console.warn('[unit-config] Handlebars templates not loaded (fallback to JS generators):', err.message);
+    });
+  });
+}
+
 // ─── Entry point: sinh toàn bộ code IL từ JSON config + canvas diagrams ───────
 // cylinderTypes không còn bắt buộc — giữ tham số để tương thích ngược với UI cũ.
 function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
@@ -1244,12 +1449,21 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
   });
   lines.push('');
 
-  // 5 sections
-  lines.push(...cgUCGenerateError(ctx));
-  lines.push(...cgUCGenerateManual(ctx));
-  lines.push(...cgUCGenerateOrigin(ctx));
-  lines.push(...cgUCGenerateAuto(ctx));
-  lines.push(...cgUCGenerateOutput(ctx));
+  // 5 sections: dùng Handlebars templates nếu đã load, fallback sang JS generators
+  if (ucTemplatesReady()) {
+    const tplCtx = cgUCBuildTemplateContext(ctx);
+    lines.push(...(ucApplyTemplate('error',  tplCtx) || cgUCGenerateError(ctx)));
+    lines.push(...(ucApplyTemplate('manual', tplCtx) || cgUCGenerateManual(ctx)));
+    lines.push(...(ucApplyTemplate('origin', tplCtx) || cgUCGenerateOrigin(ctx)));
+    lines.push(...(ucApplyTemplate('auto',   tplCtx) || cgUCGenerateAuto(ctx)));
+    lines.push(...(ucApplyTemplate('output', tplCtx) || cgUCGenerateOutput(ctx)));
+  } else {
+    lines.push(...cgUCGenerateError(ctx));
+    lines.push(...cgUCGenerateManual(ctx));
+    lines.push(...cgUCGenerateOrigin(ctx));
+    lines.push(...cgUCGenerateAuto(ctx));
+    lines.push(...cgUCGenerateOutput(ctx));
+  }
 
   lines.push('; ── END OF FILE ──────────────────────────────────────────');
 

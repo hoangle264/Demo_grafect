@@ -1,0 +1,39 @@
+;<h1/>Error
+{{#if unit.eStop}}
+LD   {{pad unit.eStop}}; {{{unit.label}}}  estop
+ZRES {{{unit.flagOrigin}}} {{{unit.flagsResetEnd}}} ; Origin
+{{/if}}
+{{#if originBase}}
+LD   {{pad unit.flagManual}}; Manual
+ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
+{{/if}}
+{{#if unit.errorDMAddr}}
+LD   CR2002           ; Always ON
+{{#each cylinders}}
+{{#if errFlagDirA}}
+MOV  {{pad errFlagDirA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
+{{/if}}
+{{/each}}
+LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
+{{else}}
+{{#each cylinders}}
+{{#if errFlagDirA}}
+{{#if @first}}LD   {{else}}OR   {{/if}}{{pad errFlagDirA}}; Error_{{{label}}}_{{{dirAName}}}
+{{/if}}
+{{#if errFlagDirB}}
+OR   {{pad errFlagDirB}}; Error_{{{label}}}_{{{dirBName}}}
+{{/if}}
+{{/each}}
+{{/if}}
+SET  {{pad unit.flagError}}; Error
+LD   {{pad unit.flagError}}; Error
+SET  {{pad unit.flagErrStop}}; Operation Error Stop
+LD   {{pad unit.flagErrStop}}; Operation Error Stop
+{{#if unit.btnReset}}
+AND  {{pad unit.btnReset}}; btnReset
+{{/if}}
+{{#if unit.flagResetPulse}}
+DIFU {{pad unit.flagResetPulse}}; Reset Error
+LDP  {{pad unit.flagResetPulse}}; Reset Error
+ZRES {{{unit.flagError}}} {{{unit.flagResetEnd}}} ; Error  Reset Error
+{{/if}}
