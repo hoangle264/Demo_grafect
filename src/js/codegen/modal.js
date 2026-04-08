@@ -95,18 +95,22 @@ function showGenerateCodeModal() {
           <div id="uc-status" style="font-size:9px;color:var(--text3);margin-top:2px;"></div>
         </div>
 
-        <!-- Diagram selector (ẩn khi dùng unit-config) -->
-        <div id="cg-diag-wrap" style="flex:1;min-width:200px;">
-          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">
-            DIAGRAMS
-            <button onclick="cgSelectAll(true)"
-              style="margin-left:8px;background:none;border:none;color:var(--cyan);
-              font-size:9px;cursor:pointer;padding:0;">all</button>
-            <button onclick="cgSelectAll(false)"
-              style="background:none;border:none;color:var(--text3);
-              font-size:9px;cursor:pointer;padding:0;">none</button>
+        <!-- Unit + Diagram selector (ẩn khi dùng unit-config) -->
+        <div id="cg-unit-wrap" style="flex:1;min-width:220px;">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">UNIT</div>
+          <div id="cg-unit-list" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;"></div>
+          <div id="cg-unit-diag-section" style="display:none;">
+            <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">
+              DIAGRAMS
+              <button onclick="cgSelectAll(true)"
+                style="margin-left:8px;background:none;border:none;color:var(--cyan);
+                font-size:9px;cursor:pointer;padding:0;">all</button>
+              <button onclick="cgSelectAll(false)"
+                style="background:none;border:none;color:var(--text3);
+                font-size:9px;cursor:pointer;padding:0;">none</button>
+            </div>
+            <div id="cg-diag-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
           </div>
-          <div id="cg-diag-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
         </div>
       </div>
 
@@ -128,25 +132,86 @@ function showGenerateCodeModal() {
     </div>`;
 
   document.body.appendChild(el);
-  cgBuildDiagList();
+  cgBuildUnitList();
   cgUpdatePreview();
 }
 
-// ─── Build diagram checkbox list ─────────────────────────────────────────────
-function cgBuildDiagList() {
-  const wrap = document.getElementById('cg-diag-list');
+// ─── Build unit radio list ────────────────────────────────────────────────────
+function cgBuildUnitList() {
+  const wrap = document.getElementById('cg-unit-list');
   if (!wrap) return;
   wrap.innerHTML = '';
-  (project.diagrams || []).forEach(d => {
-    const unitName = (project.units || []).find(u => u.id === d.unitId)?.name || d.unit || '';
-    const label = (unitName ? unitName + ' / ' : '') + (d.name || d.id);
-    const chk = document.createElement('label');
-    chk.className = 'cg-diag-chip';
-    chk.dataset.diagId = d.id;
-    chk.innerHTML = `<input type="checkbox" value="${d.id}" checked
+
+  const units = project.units || [];
+  const allDiags = project.diagrams || [];
+  const hasOrphans = allDiags.some(d => !d.unitId);
+
+  if (!units.length && !hasOrphans) {
+    wrap.innerHTML = '<span style="font-size:10px;color:var(--text3)">No units found</span>';
+    return;
+  }
+
+  let firstId = null;
+
+  units.forEach((u, i) => {
+    const count = allDiags.filter(d => d.unitId === u.id).length;
+    const lbl = document.createElement('label');
+    lbl.className = 'cg-radio-lbl';
+    lbl.innerHTML = `<input type="radio" name="cg-unit-radio" value="${u.id}"
+      onchange="cgOnUnitSelect('${u.id}')">${esc2(u.name || u.id)}
+      <span style="color:var(--text3);font-size:8px;margin-left:2px;">(${count})</span>`;
+    wrap.appendChild(lbl);
+    if (i === 0) firstId = u.id;
+  });
+
+  if (hasOrphans) {
+    const count = allDiags.filter(d => !d.unitId).length;
+    const lbl = document.createElement('label');
+    lbl.className = 'cg-radio-lbl';
+    lbl.innerHTML = `<input type="radio" name="cg-unit-radio" value="__none__"
+      onchange="cgOnUnitSelect('__none__')">(No unit)
+      <span style="color:var(--text3);font-size:8px;margin-left:2px;">(${count})</span>`;
+    wrap.appendChild(lbl);
+    if (!firstId) firstId = '__none__';
+  }
+
+  // Pre-select first unit and render its diagrams
+  if (firstId) {
+    const radio = wrap.querySelector(`input[value="${firstId}"]`);
+    if (radio) radio.checked = true;
+    cgBuildDiagForUnit(firstId);
+  }
+}
+
+// ─── Called when user selects a unit radio button ────────────────────────────
+function cgOnUnitSelect(unitId) {
+  cgBuildDiagForUnit(unitId);
+  cgUpdatePreview();
+}
+
+// ─── Build diagram checkboxes for the selected unit ──────────────────────────
+function cgBuildDiagForUnit(unitId) {
+  const listWrap = document.getElementById('cg-diag-list');
+  const section  = document.getElementById('cg-unit-diag-section');
+  if (!listWrap) return;
+  listWrap.innerHTML = '';
+
+  const diags = (project.diagrams || []).filter(d =>
+    unitId === '__none__' ? !d.unitId : d.unitId === unitId
+  );
+
+  if (section) section.style.display = diags.length ? '' : 'none';
+
+  diags.forEach(d => {
+    const modeName = d.mode || 'Auto';
+    const lbl = document.createElement('label');
+    lbl.className = 'cg-diag-chip';
+    lbl.dataset.diagId = d.id;
+    lbl.innerHTML = `<input type="checkbox" value="${d.id}" checked
       onchange="cgUpdatePreview()" style="margin-right:4px;">
-      <span>${esc2(label)}</span>`;
-    wrap.appendChild(chk);
+      <span>${esc2(d.name || d.id)}</span>
+      <span style="color:var(--text3);font-size:8px;margin-left:2px;">[${modeName}]</span>`;
+    listWrap.appendChild(lbl);
   });
 }
 
@@ -164,10 +229,10 @@ function cgUpdatePreview() {
   // Show/hide panels
   const baseMRWrap  = document.getElementById('cg-base-mr-wrap');
   const ucPanel     = document.getElementById('cg-uc-panel');
-  const diagWrap    = document.getElementById('cg-diag-wrap');
+  const unitWrap    = document.getElementById('cg-unit-wrap');
   if (baseMRWrap) baseMRWrap.style.display = isUC ? 'none' : '';
   if (ucPanel)    ucPanel.style.display    = isUC ? 'flex' : 'none';
-  if (diagWrap)   diagWrap.style.display   = isUC ? 'none' : '';
+  if (unitWrap)   unitWrap.style.display   = isUC ? 'none' : '';
 
   const pre  = document.getElementById('cg-preview');
   const stat = document.getElementById('cg-stat');

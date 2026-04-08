@@ -1,0 +1,41 @@
+;{{{label}}}
+{{#if fwdAddr}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#if fwdStepAddr}}
+AND  {{pad fwdStepAddr}}; {{{label}}} Fwd step active
+{{/if}}
+{{#if revAddr}}
+ANB  {{pad revAddr}}; {{{label}}} Rev (interlock)
+{{/if}}
+{{#if overloadAddr}}
+ANB  {{pad overloadAddr}}; {{{label}}} Overload/Fault
+{{/if}}
+LD   {{pad ../unit.flagManual}}; Manual
+{{#if fwdManFlag}}
+ANP  {{pad fwdManFlag}}; sys_man_{{{label}}}_Fwd
+{{/if}}
+ORL
+OUT  {{pad fwdAddr}}; {{{label}}}_Fwd
+{{/if}}
+{{#if revAddr}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#if revStepAddr}}
+AND  {{pad revStepAddr}}; {{{label}}} Rev step active
+{{/if}}
+{{#if fwdAddr}}
+ANB  {{pad fwdAddr}}; {{{label}}} Fwd (interlock)
+{{/if}}
+{{#if overloadAddr}}
+ANB  {{pad overloadAddr}}; {{{label}}} Overload/Fault
+{{/if}}
+LD   {{pad ../unit.flagManual}}; Manual
+{{#if revManFlag}}
+ANP  {{pad revManFlag}}; sys_man_{{{label}}}_Rev
+{{/if}}
+ORL
+OUT  {{pad revAddr}}; {{{label}}}_Rev
+{{/if}}
+{{#if overloadAddr}}
+LD   {{pad overloadAddr}}; {{{label}}} Overload/Fault
+SET  {{pad ../unit.flagError}}; Error (motor fault)
+{{/if}}

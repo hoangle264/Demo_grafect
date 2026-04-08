@@ -1,0 +1,12 @@
+;<h1>OUTPUT SECTION (AUTO/MANUAL)
+{{#each devices}}
+{{#if (eq kind "cylinder")}}
+{{> device_cylinder }}
+{{else if (eq kind "servo")}}
+{{> device_servo }}
+{{else if (eq kind "motor")}}
+{{> device_motor }}
+{{else}}
+; WARNING: Unknown device kind for {{{label}}}
+{{/if}}
+{{/each}}
