@@ -139,6 +139,68 @@ function generateKVAll(diagIds, opts) {
   const timestamp = new Date().toLocaleString('vi-VN');
   const profile = opts.profile || PLC_PROFILES['kv-5500'];
 
+  // ── Custom kv_main.hbs: if loaded, delegate entirely to Handlebars ────────
+  if (typeof tmGetCustomTemplate === 'function') {
+    const kvMainSrc = tmGetCustomTemplate('kv_main.hbs');
+    if (kvMainSrc && typeof Handlebars !== 'undefined') {
+      try {
+        // Register kv_step partial if kv_step.hbs was also loaded
+        const kvStepSrc = tmGetCustomTemplate('kv_step.hbs');
+        if (kvStepSrc) Handlebars.registerPartial('kv_step', kvStepSrc);
+
+        const kvMainFn = Handlebars.compile(kvMainSrc);
+
+        // Build context: collect all diagram data
+        const diagrams = diagIds.map(function(diagId) {
+          const diag = (project.diagrams || []).find(function(d) { return d.id === diagId; });
+          if (!diag) return null;
+          const data = loadDiagramData(diagId);
+          if (!data || !data.state) return null;
+          const s = data.state;
+          const sequence = cgResolveSequence(s);
+          const mrBase = opts.baseMR || 0;
+          const steps = sequence.map(function(item, i) {
+            const base = mrBase + i * 2;
+            return {
+              number:    String(item.step.number).padStart(2, '0'),
+              label:     item.step.label || '',
+              execAddr:  '@MR' + String(base).padStart(3, '0'),
+              doneAddr:  '@MR' + String(base + 1).padStart(3, '0'),
+              actions:   item.step.actions || [],
+              inCond:    item.inTrans ? (item.inTrans.condition || '1') : '1',
+              outCond:   item.outTrans ? (item.outTrans.condition || '1') : '1',
+            };
+          });
+          return {
+            id:      diag.id,
+            name:    diag.name || diag.id,
+            mode:    diag.mode || 'Auto',
+            unitId:  diag.unitId || '',
+            steps:   steps,
+          };
+        }).filter(Boolean);
+
+        const ctx = {
+          project:   { name: project.name || '' },
+          target:    profile.label,
+          timestamp: timestamp,
+          diagrams:  diagrams,
+          baseMR:    opts.baseMR || 0,
+        };
+
+        const code = kvMainFn(ctx);
+        const stepCount = diagrams.reduce(function(n, d) { return n + d.steps.length; }, 0);
+        return {
+          code: cgApplyProfile(code, profile),
+          stats: diagIds.length + ' diagram(s) · ' + stepCount + ' step(s) [custom kv_main.hbs] · ' + profile.label
+        };
+      } catch (e) {
+        // Fall through to default generator if custom template errors
+        console.warn('[kv-generator] kv_main.hbs render error:', e);
+      }
+    }
+  }
+
   // ── File header ─────────────────────────────────────────────────────────
   const targetLabel = profile.label.padEnd(41);
   lines.push('; ╔══════════════════════════════════════════════════════╗');
@@ -673,10 +735,20 @@ function generateKVDiagram(diagMeta, s, opts) {
   }
 
   // ── Resolve step templates (opts override or defaults) ───────────────────
-  const activationTemplate =
-    (opts.stepTemplates && opts.stepTemplates.activation) || STEP_ACTIVATION_TEMPLATE;
-  const feedbackTemplate =
-    (opts.stepTemplates && opts.stepTemplates.feedback) || STEP_FEEDBACK_TEMPLATE;
+  // Check for custom kv_step.hbs from localStorage
+  let activationTemplate = (opts.stepTemplates && opts.stepTemplates.activation) || STEP_ACTIVATION_TEMPLATE;
+  let feedbackTemplate   = (opts.stepTemplates && opts.stepTemplates.feedback)   || STEP_FEEDBACK_TEMPLATE;
+  if (typeof tmGetCustomTemplate === 'function') {
+    const kvStepSrc = tmGetCustomTemplate('kv_step.hbs');
+    if (kvStepSrc) {
+      // kv_step.hbs uses ${…} placeholder syntax matching cgApplyOutputTemplate.
+      // Split by a divider comment line ";;;" (triple semicolon) if two blocks
+      // (activation + feedback) are provided; otherwise use for activation only.
+      const parts = kvStepSrc.split(/^;;;$/m);
+      activationTemplate = parts[0].trim();
+      if (parts[1]) feedbackTemplate = parts[1].trim();
+    }
+  }
 
   // ── Generate code per sequence item ──────────────────────────────────────
   sequence.forEach((item, idx) => {

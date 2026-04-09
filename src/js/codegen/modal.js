@@ -119,6 +119,33 @@ function showGenerateCodeModal() {
         </div>
       </div>
 
+      <!-- Template Manager (collapsible) -->
+      <div style="border-top:1px solid var(--border);background:var(--s2);flex-shrink:0;">
+        <div style="padding:6px 20px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;"
+          onclick="cgToggleTemplateManager()">
+          <span style="font-size:9px;letter-spacing:1px;color:var(--text3);">⚙ TEMPLATE MANAGER</span>
+          <span id="tpl-manager-chevron" style="font-size:9px;color:var(--text3);">▶</span>
+          <span style="flex:1;"></span>
+          <label style="font-size:9px;color:var(--cyan);cursor:pointer;"
+            onclick="event.stopPropagation()">
+            + Nạp .hbs
+            <input type="file" multiple accept=".hbs" style="display:none"
+              onchange="tmHandleFileUpload(this.files); this.value=''">
+          </label>
+        </div>
+        <div id="tpl-manager-body" style="display:none;padding:0 20px 10px 20px;">
+          <div id="tpl-manager-list" style="margin-top:4px;"></div>
+          <div style="margin-top:6px;font-size:9px;color:var(--text3);">
+            Hỗ trợ: <code style="color:var(--cyan)">kv_main.hbs</code>,
+            <code style="color:var(--cyan)">kv_step.hbs</code>,
+            <code style="color:var(--cyan)">auto.hbs</code>,
+            <code style="color:var(--cyan)">manual.hbs</code>,
+            <code style="color:var(--cyan)">step-body.hbs</code>,
+            <code style="color:var(--cyan)">st_main.hbs</code>, …
+          </div>
+        </div>
+      </div>
+
       <!-- Code preview -->
       <div style="flex:1;overflow:auto;padding:0;">
         <pre id="cg-preview"
@@ -139,6 +166,7 @@ function showGenerateCodeModal() {
   document.body.appendChild(el);
   cgBuildUnitList();
   cgUCBuildUnitSelector();
+  tmRenderManagerList();
   cgUpdatePreview();
 }
 
@@ -439,5 +467,16 @@ function cgCopyCode() {
   const pre = document.getElementById('cg-preview');
   if (!pre) return;
   navigator.clipboard.writeText(pre.textContent).then(() => toast('✓ Copied to clipboard'));
+}
+
+// ─── Template Manager toggle ──────────────────────────────────────────────────
+function cgToggleTemplateManager() {
+  const body = document.getElementById('tpl-manager-body');
+  const chevron = document.getElementById('tpl-manager-chevron');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  if (chevron) chevron.textContent = open ? '▶' : '▼';
+  if (!open) tmRenderManagerList();
 }
 
