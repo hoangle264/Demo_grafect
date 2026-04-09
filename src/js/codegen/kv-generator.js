@@ -197,6 +197,9 @@ function generateKVAll(diagIds, opts) {
       } catch (e) {
         // Fall through to default generator if custom template errors
         console.warn('[kv-generator] kv_main.hbs render error:', e);
+        if (typeof toast === 'function') {
+          toast('⚠ kv_main.hbs lỗi khi render: ' + (e.message || String(e)) + ' — dùng generator mặc định.');
+        }
       }
     }
   }
