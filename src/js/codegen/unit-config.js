@@ -1298,17 +1298,22 @@ function ucTemplatesReady() {
 function ucApplyTemplate(name, tplCtx) {
   const tmpl = UC_TEMPLATE_CACHE[name];
   if (!tmpl) return null;
-  const text = tmpl(tplCtx);
-  const raw = text.split('\n').map(function(l) { return l.trimEnd(); });
-  const result = [];
-  let prevBlank = false;
-  for (let i = 0; i < raw.length; i++) {
-    const blank = raw[i].trim() === '';
-    if (blank && prevBlank) continue;
-    result.push(raw[i]);
-    prevBlank = blank;
+  try {
+    const text = tmpl(tplCtx);
+    const raw = text.split('\n').map(function(l) { return l.trimEnd(); });
+    const result = [];
+    let prevBlank = false;
+    for (let i = 0; i < raw.length; i++) {
+      const blank = raw[i].trim() === '';
+      if (blank && prevBlank) continue;
+      result.push(raw[i]);
+      prevBlank = blank;
+    }
+    return result;
+  } catch (e) {
+    console.warn('[unit-config] template render error for "' + name + '":', e);
+    return null; // fallback to JS generator via the || chain in cgGenerateFromUnitConfig
   }
-  return result;
 }
 
 // ─── Helper: tính stack instruction cho ALT block (Manual) ────────────────────

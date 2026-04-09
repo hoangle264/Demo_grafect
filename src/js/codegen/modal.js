@@ -330,11 +330,18 @@ function cgUpdatePreview() {
     }
     const profile        = PLC_PROFILES['kv-5500'];
     const selectedUnitId = cgUCGetSelectedUnitId();
-    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
-    pre.textContent = result.code;
-    if (stat) stat.textContent = result.stats;
-    // Syntax highlight
-    cgUCHighlight(pre, profile);
+    try {
+      const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
+      pre.textContent = result.code;
+      if (stat) stat.textContent = result.stats;
+      // Syntax highlight
+      cgUCHighlight(pre, profile);
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      pre.textContent = '; ⚠ Lỗi khi sinh mã: ' + msg + '\n; Kiểm tra template hoặc dữ liệu unit config.';
+      if (stat) stat.textContent = 'Lỗi sinh mã';
+      console.error('[modal] cgGenerateFromUnitConfig error:', e);
+    }
     return;
   }
 

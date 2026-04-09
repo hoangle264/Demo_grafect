@@ -126,6 +126,9 @@ function generateSTDemo(diagIds, opts) {
         };
       } catch (e) {
         console.warn('[st-generator] st_main.hbs render error:', e);
+        if (typeof toast === 'function') {
+          toast('⚠ st_main.hbs lỗi khi render: ' + (e.message || String(e)) + ' — dùng generator mặc định.');
+        }
       }
     }
   }
