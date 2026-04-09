@@ -116,7 +116,9 @@ function tmHandleFileUpload(files) {
       const src = e.target.result;
       const err = tmValidateTemplate(src);
       if (err) {
-        toast('⚠ Template "' + file.name + '" có lỗi cú pháp: ' + err);
+        // Show a safe, truncated error message; log the full message for debugging
+        console.warn('[template-manager] syntax error in', file.name, ':', err);
+        toast('⚠ Template "' + escHtml(file.name) + '" có lỗi cú pháp. Xem console để biết chi tiết.');
         return;
       }
       tmSetCustomTemplate(file.name, src);
@@ -207,13 +209,27 @@ function tmRenderManagerList() {
   loaded.sort().forEach(function(filename) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
-    row.innerHTML =
-      '<span style="font-size:10px;color:var(--cyan);font-family:\'JetBrains Mono\',monospace;">' +
-        escHtml(filename) +
-      '</span>' +
-      '<span style="flex:1;font-size:9px;color:var(--text3);">' + tmDescribeFile(filename) + '</span>' +
-      '<button class="btn" style="padding:1px 7px;font-size:9px;" ' +
-        'onclick="tmResetAndRefresh(\'' + escAttr(filename) + '\')">↺ Reset</button>';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'font-size:10px;color:var(--cyan);font-family:\'JetBrains Mono\',monospace;';
+    nameSpan.textContent = filename;
+
+    const descSpan = document.createElement('span');
+    descSpan.style.cssText = 'flex:1;font-size:9px;color:var(--text3);';
+    descSpan.textContent = tmDescribeFile(filename);
+
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.cssText = 'padding:1px 7px;font-size:9px;';
+    btn.textContent = '↺ Reset';
+    btn.dataset.filename = filename;
+    btn.addEventListener('click', function() {
+      tmResetAndRefresh(this.dataset.filename);
+    });
+
+    row.appendChild(nameSpan);
+    row.appendChild(descSpan);
+    row.appendChild(btn);
     list.appendChild(row);
   });
 }
@@ -266,10 +282,6 @@ function escHtml(s) {
   return String(s).replace(/[&<>"']/g, function(c) {
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
-}
-
-function escAttr(s) {
-  return String(s).replace(/'/g, "\\'");
 }
 
 // ─── Boot: apply any templates saved in localStorage on page load ─────────────

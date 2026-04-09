@@ -142,6 +142,9 @@ function showGenerateCodeModal() {
             <code style="color:var(--cyan)">manual.hbs</code>,
             <code style="color:var(--cyan)">step-body.hbs</code>,
             <code style="color:var(--cyan)">st_main.hbs</code>, …
+            <br>Ghi chú: <code style="color:var(--cyan)">kv_step.hbs</code> dùng cú pháp
+            <code>${"$"}{prevStepDone}</code>/<code>${"$"}{stepExe}</code>/<code>${"$"}{stepDone}</code>.
+            Phân tách block activation và feedback bằng dòng <code>;;;</code> (3 dấu chấm phẩy).
           </div>
         </div>
       </div>
