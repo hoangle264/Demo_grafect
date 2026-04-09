@@ -538,6 +538,48 @@ function cgBuildPrevStepBlock(prevSteps, mrMap) {
   }).join('\n');
 }
 
+function cgBuildRuntimeRefBlock(refs, commentPrefix) {
+  const filteredRefs = (refs || []).filter(Boolean);
+  if (!filteredRefs.length) return '';
+  return filteredRefs.map((ref, index) => {
+    const comment = commentPrefix ? `; ${commentPrefix} ${index + 1}` : '';
+    if (index === 0) {
+      return `${ref.padEnd(ADDR_COLUMN_WIDTH)}${comment}`;
+    }
+    return `AND  ${ref.padEnd(ADDR_COLUMN_WIDTH)}${comment}`;
+  }).join('\n');
+}
+
+function cgBuildRuntimeStepPlanMap(sequence, s, mrMap) {
+  if (typeof cgBuildStepRuntimePlan !== 'function' || typeof cgRuntimeBuildResolverOptions !== 'function') {
+    return {};
+  }
+
+  const resolverOptions = cgRuntimeBuildResolverOptions({
+    unitConfig: (typeof UC_UNIT_CONFIG !== 'undefined') ? UC_UNIT_CONFIG : null,
+    runtimeTypeConfig: (typeof UC_RUNTIME_DEVICE_META !== 'undefined' && UC_RUNTIME_DEVICE_META)
+      || ((typeof UC_CYLINDER_TYPES !== 'undefined') ? UC_CYLINDER_TYPES : null)
+  });
+
+  const stepPlanMap = {};
+  sequence.forEach(function(sequenceEntry) {
+    const refs = mrMap[sequenceEntry.step.id] || {};
+    const prevDoneRefs = (typeof cgRuntimeGetUpstreamDoneRefs === 'function')
+      ? cgRuntimeGetUpstreamDoneRefs(sequenceEntry, s, mrMap)
+      : [];
+    const stepPlan = cgBuildStepRuntimePlan(sequenceEntry, Object.assign({}, resolverOptions, {
+      vars: s.vars || [],
+      prevDoneRefs: prevDoneRefs,
+      prevDoneRef: prevDoneRefs[0] || '',
+      executeBitRef: refs.exec || '',
+      doneBitRef: refs.done || ''
+    }));
+    stepPlanMap[sequenceEntry.step.id] = stepPlan;
+  });
+
+  return stepPlanMap;
+}
+
 // ─── Output section: 4-phase pipeline (Setup→Analysis→Mapping→Generation) ────
 function generateKVOutputSection(loadedDiags, signalActionMap) {
   const lines = [];
@@ -754,9 +796,12 @@ function generateKVDiagram(diagMeta, s, opts) {
   }
 
   // ── Generate code per sequence item ──────────────────────────────────────
+  const stepRuntimePlanMap = cgBuildRuntimeStepPlanMap(sequence, s, mrMap);
+
   sequence.forEach((item, idx) => {
     const { step, inTrans, outTrans, branchType } = item;
     const mr = mrMap[step.id];
+    const stepRuntimePlan = stepRuntimePlanMap[step.id] || null;
     const stepNum = String(step.number).padStart(2, '0');
     const stepLbl = step.label ? ` — ${step.label}` : '';
 
@@ -773,7 +818,16 @@ function generateKVDiagram(diagMeta, s, opts) {
       prevStepDoneVal = modeBit
         ? `${modeBit.padEnd(ADDR_COLUMN_WIDTH)}; Initial step — mode active`
         : `CR2002        ; Initial step — 1st scan pulse`;
-      inTransitionVal = '';
+      inTransitionVal = stepRuntimePlan && stepRuntimePlan.transitionRef
+        ? `${stepRuntimePlan.transitionRef.padEnd(ADDR_COLUMN_WIDTH)}; transition`
+        : '';
+    } else if (stepRuntimePlan) {
+      prevStepDoneVal = stepRuntimePlan.prevDoneRefs && stepRuntimePlan.prevDoneRefs.length
+        ? cgBuildRuntimeRefBlock(stepRuntimePlan.prevDoneRefs, 'prev step done')
+        : 'CR2002';
+      inTransitionVal = stepRuntimePlan.transitionRef
+        ? `${stepRuntimePlan.transitionRef.padEnd(ADDR_COLUMN_WIDTH)}; transition`
+        : '';
     } else if (inTrans) {
       // Normal step: activated by previous step(s) done bit via incoming transition.
       const prevSteps = resolveStepsThrough(
@@ -842,11 +896,17 @@ function generateKVDiagram(diagMeta, s, opts) {
     }
 
     // ── Step completion: outgoing transition → set done bit ───────────────
-    // Build ${outTransition}: empty for trivial/unconditional (drops AND line).
-    const outCond = outTrans?.condition?.trim();
-    const outTransitionVal = (outCond && outCond !== '1' && outCond !== 'true')
-      ? `${(resolveAddr(outCond) || outCond).padEnd(ADDR_COLUMN_WIDTH)}; ${esc2(outCond)}`
-      : '';
+    // Runtime plan prefers explicit feedback refs; legacy path falls back to
+    // the outgoing transition condition when runtime feedback is unavailable.
+    let outTransitionVal = '';
+    if (stepRuntimePlan && stepRuntimePlan.feedbackRefs && stepRuntimePlan.feedbackRefs.length) {
+      outTransitionVal = cgBuildRuntimeRefBlock(stepRuntimePlan.feedbackRefs, 'feedback');
+    } else {
+      const outCond = outTrans?.condition?.trim();
+      outTransitionVal = (outCond && outCond !== '1' && outCond !== 'true')
+        ? `${(resolveAddr(outCond) || outCond).padEnd(ADDR_COLUMN_WIDTH)}; ${esc2(outCond)}`
+        : '';
+    }
 
     const feedbackVars = {
       stepExe:       mr.exec,

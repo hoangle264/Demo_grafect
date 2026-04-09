@@ -51,6 +51,7 @@ function showGenerateCodeModal() {
             <option value="siemens">🟡 Siemens S7-1200 / 1500 (AWL)</option>
             <option value="st">⬜ IEC 61131-3 ST [demo]</option>
             <option value="unit-config">🟣 Unit Config JSON</option>
+            <option value="runtime-plan">🟤 Runtime Plan [debug]</option>
           </select>
         </div>
 
@@ -91,6 +92,13 @@ function showGenerateCodeModal() {
               style="font-size:10px;color:var(--cyan);background:var(--bg);
               border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
               onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:9px;color:var(--text3);width:110px;">Runtime Metadata: <span style="font-size:8px;">(optional)</span></label>
+            <input type="file" id="uc-runtime-meta-file" accept=".json"
+              style="font-size:10px;color:var(--cyan);background:var(--bg);
+              border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
+              onchange="cgUCLoadFile('uc-runtime-meta-file', function(d){ UC_RUNTIME_DEVICE_META=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
           </div>
           <!-- Unit selector từ project canvas -->
           <div id="uc-unit-selector" style="display:none;margin-top:4px;">
@@ -308,13 +316,14 @@ function cgSelectAll(val) {
 function cgUpdatePreview() {
   const target = document.getElementById('cg-target')?.value || 'kv-5500';
   const isUC = (target === 'unit-config');
+  const usesUC = (target === 'unit-config' || target === 'runtime-plan');
 
   // Show/hide panels
   const baseMRWrap  = document.getElementById('cg-base-mr-wrap');
   const ucPanel     = document.getElementById('cg-uc-panel');
   const unitWrap    = document.getElementById('cg-unit-wrap');
   if (baseMRWrap) baseMRWrap.style.display = isUC ? 'none' : '';
-  if (ucPanel)    ucPanel.style.display    = isUC ? 'flex' : 'none';
+  if (ucPanel)    ucPanel.style.display    = usesUC ? 'flex' : 'none';
   if (unitWrap)   unitWrap.style.display   = isUC ? 'none' : '';
 
   const pre  = document.getElementById('cg-preview');
@@ -341,6 +350,37 @@ function cgUpdatePreview() {
       pre.textContent = '; ⚠ Lỗi khi sinh mã: ' + msg + '\n; Kiểm tra template hoặc dữ liệu unit config.';
       if (stat) stat.textContent = 'Lỗi sinh mã';
       console.error('[modal] cgGenerateFromUnitConfig error:', e);
+    }
+    return;
+  }
+
+  // ── Runtime Plan debug preview ───────────────────────────────────────────
+  if (target === 'runtime-plan') {
+    const baseMR = parseInt(document.getElementById('cg-base-mr')?.value || '100', 10);
+    const selected = Array.from(
+      document.querySelectorAll('#cg-diag-list input[type=checkbox]:checked')
+    ).map(c => c.value);
+
+    if (!selected.length) {
+      pre.textContent = '{\n  "error": "No diagrams selected."\n}';
+      if (stat) stat.textContent = '';
+      return;
+    }
+
+    try {
+      const result = cgBuildRuntimeDebugPreview(selected, {
+        baseMR,
+        unitConfig: UC_UNIT_CONFIG,
+        runtimeTypeConfig: UC_RUNTIME_DEVICE_META || UC_CYLINDER_TYPES
+      });
+      pre.textContent = result.code;
+      if (stat) stat.textContent = result.stats;
+    } catch (e) {
+      pre.textContent = JSON.stringify({
+        error: e && e.message ? e.message : String(e)
+      }, null, 2);
+      if (stat) stat.textContent = 'Runtime plan debug failed';
+      console.error('[modal] cgBuildRuntimeDebugPreview error:', e);
     }
     return;
   }
@@ -419,6 +459,9 @@ function cgUCUpdateStatus() {
   if (UC_CYLINDER_TYPES) {
     parts.push('Cylinder Types: ' + Object.keys(UC_CYLINDER_TYPES).filter(k => !k.startsWith('_')).length + ' types (optional)');
   }
+  if (UC_RUNTIME_DEVICE_META) {
+    parts.push('Runtime Metadata: ' + Object.keys(UC_RUNTIME_DEVICE_META).filter(k => !k.startsWith('_')).length + ' type(s) loaded');
+  }
   // v3: hiển thị trạng thái Device Library
   const libKeys = Object.keys(DEVICE_LIBRARY || {}).filter(k => !k.startsWith('_'));
   if (libKeys.length) {
@@ -448,6 +491,28 @@ function cgDownloadCode() {
     a.download = label + '_code.mnm';
     a.click();
     toast('✓ Downloaded ' + label + '_code.mnm');
+    return;
+  }
+
+  if (target === 'runtime-plan') {
+    const baseMR = parseInt(document.getElementById('cg-base-mr')?.value || '100', 10);
+    const selected = Array.from(
+      document.querySelectorAll('#cg-diag-list input[type=checkbox]:checked')
+    ).map(c => c.value);
+    if (!selected.length) { toast('⚠ No diagrams selected'); return; }
+
+    const result = cgBuildRuntimeDebugPreview(selected, {
+      baseMR,
+      unitConfig: UC_UNIT_CONFIG,
+      runtimeTypeConfig: UC_RUNTIME_DEVICE_META || UC_CYLINDER_TYPES
+    });
+    const safe = (project.name || 'grafcet').replace(/\s+/g, '_');
+    const blob = new Blob([result.code], { type: 'application/json;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = safe + '_runtime_plan.json';
+    a.click();
+    toast('✓ Downloaded ' + safe + '_runtime_plan.json');
     return;
   }
 

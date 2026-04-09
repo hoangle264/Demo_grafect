@@ -34,6 +34,7 @@
 // ─── Global storage cho JSON configs ─────────────────────────────────────────
 let UC_UNIT_CONFIG    = null;   // nội dung unit-config.json (v2 hoặc v3)
 let UC_CYLINDER_TYPES = null;   // không còn bắt buộc — giữ lại cho tương thích ngược
+let UC_RUNTIME_DEVICE_META = null; // runtime metadata explicit cho execute -> feedback
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UC v3 — CONSTANTS & DEFAULT MAPPINGS
