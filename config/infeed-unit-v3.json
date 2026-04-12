@@ -37,7 +37,7 @@
 
   "_note_devices": [
     "devices[].id phải khớp với Variable Table label trong Grafcet canvas.",
-    "VD: id=CY1 → Variable Table có entry label=CY1 với signalAddresses CY1.Up_SOL, CY1.Down_SOL, ...",
+    "VD: id=CY1 → Variable Table có entry label=CY1 với signalAddresses CY1.CoilA, CY1.CoilB, CY1.LSH, CY1.LSL",
     "",
     "Admin addresses tự tính theo index:",
     "  index=0 → hmiManBtn=MR1400, sysManFlag=MR1500, lockDirA=MR1200, lockDirB=MR1201",
@@ -52,7 +52,7 @@
       "index": 0,
       "label": "CY1",
       "_note": "Admin: hmiManBtn=MR1400, sysManFlag=MR1500, lock=MR1200/1201, err=MR1600/1601",
-      "_note2": "I/O: Up_SOL=LR000, Down_SOL=LR001, Up_SNS=MR1000, Down_SNS=MR1001 (từ Variable Table)"
+      "_note2": "I/O: CoilA=LR000, CoilB=LR001, LSH=MR1000, LSL=MR1001 (từ Variable Table)"
     },
     {
       "kind": "cylinder",
@@ -60,31 +60,13 @@
       "index": 1,
       "label": "CY2",
       "_note": "Admin: hmiManBtn=MR1401, sysManFlag=MR1501, lock=MR1202/1203, err=MR1602/1603",
-      "_note2": "I/O: Extend_SOL=LR002, Retract_SOL=LR003, Extend_SNS=MR1002, Retract_SNS=MR1003"
+      "_note2": "I/O: CoilA=LR002, CoilB=LR003, LSH=MR1002, LSL=MR1003"
     },
     {
       "kind": "cylinder",
       "id": "CY3",
       "index": 2,
       "label": "CY3"
-    },
-    {
-      "kind": "cylinder",
-      "id": "CY4",
-      "index": 3,
-      "label": "CY4"
-    },
-    {
-      "kind": "cylinder",
-      "id": "CY5",
-      "index": 4,
-      "label": "CY5"
-    },
-    {
-      "kind": "cylinder",
-      "id": "CY6",
-      "index": 5,
-      "label": "CY6"
     }
   ]
 }

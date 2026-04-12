@@ -45,16 +45,16 @@ SET  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{#if errTimerDirA}}
 LD   {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad sensorDirA}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad sensorDirA}}; FB_{{{../unit.label}}}_{{{label}}}_{{{fbDirAName}}}
 ANB  {{pad ../unit.flagManual}}; Manual
 ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}
+ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
 LD   {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad sensorDirB}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad sensorDirB}}; FB_{{{../unit.label}}}_{{{label}}}_{{{fbDirBName}}}
 ANB  {{pad ../unit.flagManual}}; Manual
 ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}
+ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
 {{/if}}
 {{/if}}

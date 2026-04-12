@@ -49,6 +49,11 @@ function handleImport(e) {
             name: raw.project.name||'Imported',
             machineName: raw.project.machineName||raw.project.name||'Machine',
             units: (raw.units||[]).map(u=>({...u})),
+            devCategories: (raw.devCategories||[]).map(c=>({...c})),
+            devices: (raw.devices||[]).map(d=>({
+              ...d,
+              signals: (d.signals||[]).map(s=>({...s}))
+            })),
             folders: (raw.folders||[]),
             diagrams: []
           };
@@ -56,9 +61,25 @@ function handleImport(e) {
         } else {
           // MERGE: add units from import (avoid duplicate IDs)
           if(!project.units) project.units=[];
+          if(!project.devCategories) project.devCategories=[];
+          if(!project.devices) project.devices=[];
           (raw.units||[]).forEach(u=>{
             if(!project.units.find(x=>x.id===u.id)){
               project.units.push({...u});
+            }
+          });
+          (raw.devCategories||[]).forEach(cat=>{
+            if(!project.devCategories.find(x=>x.id===cat.id)) {
+              project.devCategories.push({...cat});
+            }
+          });
+          (raw.devices||[]).forEach(dev=>{
+            const exists = project.devices.find(x => x.id===dev.id || x.name===dev.name);
+            if(!exists) {
+              project.devices.push({
+                ...dev,
+                signals: (dev.signals||[]).map(s=>({...s}))
+              });
             }
           });
         }
@@ -135,6 +156,11 @@ function exportProject() {
       machineName: project.machineName||project.name,
     },
     units: (project.units||[]).map(u=>({...u})),  // full units array
+    devCategories: (project.devCategories||[]).map(c=>({...c})),
+    devices: (project.devices||[]).map(d=>({
+      ...d,
+      signals: (d.signals||[]).map(s=>({...s}))
+    })),
     folders: (project.folders||[]),                // legacy folders
     diagrams,
     version: '3.0',

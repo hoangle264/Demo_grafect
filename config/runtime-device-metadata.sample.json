@@ -128,12 +128,12 @@
     }
   },
 
-  "Cylinder_coilA_lsh": {
-    "_comment": "Ví dụ explicit mapping cho case coilA -> lsh, coilB -> lsl.",
+  "Cylinder_CoilA_LSH": {
+    "_comment": "Ví dụ explicit mapping cho case CoilA -> LSH, CoilB -> LSL.",
     "signals": {
       "execute": {
-        "coilA": {
-          "feedback": "lsh",
+        "CoilA": {
+          "feedback": "LSH",
           "timeoutMs": 500,
           "completionMode": "all-feedback-on",
           "outputBindings": [
@@ -141,19 +141,19 @@
             { "physicalOutputRef": "LR101", "bindingMode": "normal" }
           ]
         },
-        "coilB": {
-          "feedback": "lsl",
+        "CoilB": {
+          "feedback": "LSL",
           "timeoutMs": 500,
           "completionMode": "all-feedback-on"
         }
       },
       "feedback": {
-        "lsh": {
+        "LSH": {
           "role": "completion",
           "required": true,
           "semantic": "position-A"
         },
-        "lsl": {
+        "LSL": {
           "role": "completion",
           "required": true,
           "semantic": "position-B"

@@ -6,7 +6,7 @@
 //  Allows users to load custom .hbs files from their computer to override
 //  the default code generation templates for any PLC target.
 //
-//  localStorage keys: custom_tpl_<filename>  (e.g. custom_tpl_kv_main.hbs)
+//  localStorage keys: custom_tpl_<filename> or registry-backed custom_tpl_uc_*
 //
 //  Template classification:
 //    kv_main.hbs, kv_step.hbs       → KV5500 / KV mnemonic generator
@@ -16,11 +16,516 @@
 //    main-output.hbs                → Unit Config JSON generator
 //    st_main.hbs                    → Structured Text generator
 //
-//  Files whose name contains "body" or "partial" are also registered as
-//  Handlebars partials so other templates can call {{> name}}.
+//  Unit Config templates now use an explicit registry so upload validation,
+//  localStorage persistence, partial registration, and UI rendering all use
+//  the same source of truth.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const TM_STORAGE_PREFIX = 'custom_tpl_';
+
+const TM_UNIT_CONFIG_TEMPLATE_REGISTRY = [
+  {
+    id: 'uc.error',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'error.hbs',
+    storageKey: 'custom_tpl_uc_error',
+    cacheKey: 'error',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'error',
+    description: 'Section Error',
+    order: 10,
+  },
+  {
+    id: 'uc.manual',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'manual.hbs',
+    storageKey: 'custom_tpl_uc_manual',
+    cacheKey: 'manual',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'manual',
+    description: 'Section Manual',
+    order: 20,
+  },
+  {
+    id: 'uc.origin',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'origin.hbs',
+    storageKey: 'custom_tpl_uc_origin',
+    cacheKey: 'origin',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'origin',
+    description: 'Section Origin',
+    order: 30,
+  },
+  {
+    id: 'uc.auto',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'auto.hbs',
+    storageKey: 'custom_tpl_uc_auto',
+    cacheKey: 'auto',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'auto',
+    description: 'Section Auto',
+    order: 40,
+  },
+  {
+    id: 'uc.mainOutput',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'main-output.hbs',
+    storageKey: 'custom_tpl_uc_main_output',
+    cacheKey: 'main-output',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'main-output',
+    description: 'Section Main Output',
+    order: 50,
+  },
+  {
+    id: 'uc.outputLegacy',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'section',
+    uploadName: 'output.hbs',
+    storageKey: 'custom_tpl_uc_output',
+    cacheKey: 'output',
+    partialName: null,
+    bundledSourceType: 'template',
+    bundledSourceKey: 'output',
+    description: 'Legacy Output fallback',
+    order: 60,
+  },
+  {
+    id: 'uc.stepBody',
+    scope: 'unit-config',
+    group: 'sections',
+    category: 'partial',
+    uploadName: 'step-body.hbs',
+    storageKey: 'custom_tpl_uc_step_body',
+    cacheKey: null,
+    partialName: 'step_body',
+    bundledSourceType: 'partial',
+    bundledSourceKey: 'step_body',
+    description: 'Shared partial for step completion',
+    order: 70,
+    acceptAliases: ['step_body.hbs'],
+  },
+  {
+    id: 'uc.deviceCylinder',
+    scope: 'unit-config',
+    group: 'device-partials',
+    category: 'partial',
+    uploadName: 'cylinder.hbs',
+    storageKey: 'custom_tpl_uc_device_cylinder',
+    cacheKey: null,
+    partialName: 'device_cylinder',
+    bundledSourceType: 'partial',
+    bundledSourceKey: 'device_cylinder',
+    description: 'Device partial for cylinders',
+    order: 80,
+    acceptAliases: ['devices/cylinder.hbs'],
+  },
+  {
+    id: 'uc.deviceServo',
+    scope: 'unit-config',
+    group: 'device-partials',
+    category: 'partial',
+    uploadName: 'servo.hbs',
+    storageKey: 'custom_tpl_uc_device_servo',
+    cacheKey: null,
+    partialName: 'device_servo',
+    bundledSourceType: 'partial',
+    bundledSourceKey: 'device_servo',
+    description: 'Device partial for servos',
+    order: 90,
+    acceptAliases: ['devices/servo.hbs'],
+  },
+  {
+    id: 'uc.deviceMotor',
+    scope: 'unit-config',
+    group: 'device-partials',
+    category: 'partial',
+    uploadName: 'motor.hbs',
+    storageKey: 'custom_tpl_uc_device_motor',
+    cacheKey: null,
+    partialName: 'device_motor',
+    bundledSourceType: 'partial',
+    bundledSourceKey: 'device_motor',
+    description: 'Device partial for motors',
+    order: 100,
+    acceptAliases: ['devices/motor.hbs'],
+  },
+];
+
+const TM_LEGACY_ALLOWED_FILES = {
+  'kv_main.hbs': 'KV5500 Mnemonic',
+  'kv_step.hbs': 'KV5500 step partial',
+  'st_main.hbs': 'Structured Text',
+};
+
+const TM_REGISTRY_BY_UPLOAD_NAME = Object.create(null);
+const TM_REGISTRY_BY_STORAGE_KEY = Object.create(null);
+const TM_REGISTRY_UPLOAD_NAMES = new Set();
+const TM_REGISTRY_LEGACY_FILENAMES = new Set();
+const TM_TEMPLATE_SESSION_ISSUES = Object.create(null);
+
+TM_UNIT_CONFIG_TEMPLATE_REGISTRY.forEach(function(entry) {
+  TM_REGISTRY_BY_UPLOAD_NAME[entry.uploadName.toLowerCase()] = entry;
+  TM_REGISTRY_BY_STORAGE_KEY[entry.storageKey] = entry;
+  TM_REGISTRY_UPLOAD_NAMES.add(entry.uploadName);
+  (entry.acceptAliases || []).forEach(function(alias) {
+    TM_REGISTRY_BY_UPLOAD_NAME[alias.toLowerCase()] = entry;
+    TM_REGISTRY_LEGACY_FILENAMES.add(alias);
+  });
+});
+
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+function tmNormalizeFilename(filename) {
+  return String(filename || '').trim().replace(/^.*[\\/]/, '');
+}
+
+function tmGetRegistryEntry(filename) {
+  const raw = String(filename || '').trim();
+  return TM_REGISTRY_BY_UPLOAD_NAME[raw.toLowerCase()] ||
+    TM_REGISTRY_BY_UPLOAD_NAME[tmNormalizeFilename(raw).toLowerCase()] ||
+    null;
+}
+
+function tmGetLegacyStorageKeys(entry) {
+  const keys = [TM_STORAGE_PREFIX + entry.uploadName];
+  (entry.acceptAliases || []).forEach(function(alias) {
+    keys.push(TM_STORAGE_PREFIX + alias);
+    keys.push(TM_STORAGE_PREFIX + tmNormalizeFilename(alias));
+  });
+  return Array.from(new Set(keys));
+}
+
+function tmReadRegistryTemplate(entry) {
+  if (!entry) return null;
+  return localStorage.getItem(entry.storageKey) ||
+    tmGetLegacyStorageKeys(entry).map(function(key) {
+      return localStorage.getItem(key);
+    }).find(Boolean) || null;
+}
+
+function tmRemoveRegistryTemplate(entry) {
+  if (!entry) return;
+  localStorage.removeItem(entry.storageKey);
+  tmGetLegacyStorageKeys(entry).forEach(function(key) {
+    localStorage.removeItem(key);
+  });
+}
+
+function tmListRegistryEntries() {
+  return TM_UNIT_CONFIG_TEMPLATE_REGISTRY.slice().sort(function(a, b) {
+    return a.order - b.order;
+  });
+}
+
+function tmGetRegistryEntryByPartialName(partialName) {
+  return tmListRegistryEntries().find(function(entry) {
+    return entry.partialName === partialName;
+  }) || null;
+}
+
+function tmSetTemplateIssue(filename, type, message) {
+  const entry = tmGetRegistryEntry(filename);
+  const key = entry ? entry.id : tmNormalizeFilename(filename);
+  TM_TEMPLATE_SESSION_ISSUES[key] = {
+    type: type || 'error',
+    message: message || 'Unknown template issue'
+  };
+}
+
+function tmClearTemplateIssue(filename) {
+  const entry = tmGetRegistryEntry(filename);
+  const key = entry ? entry.id : tmNormalizeFilename(filename);
+  delete TM_TEMPLATE_SESSION_ISSUES[key];
+}
+
+function tmGetTemplateIssue(filenameOrEntry) {
+  const entry = typeof filenameOrEntry === 'string'
+    ? tmGetRegistryEntry(filenameOrEntry)
+    : filenameOrEntry;
+  const key = entry ? entry.id : tmNormalizeFilename(filenameOrEntry || '');
+  return TM_TEMPLATE_SESSION_ISSUES[key] || null;
+}
+
+function tmGetBundledTemplateSource(entry) {
+  if (!entry) return '';
+  if (entry.bundledSourceType === 'template' && typeof UC_TEMPLATE_BUNDLE !== 'undefined') {
+    return UC_TEMPLATE_BUNDLE[entry.bundledSourceKey] || '';
+  }
+  if (entry.bundledSourceType === 'partial' && typeof UC_PARTIAL_BUNDLE !== 'undefined') {
+    return UC_PARTIAL_BUNDLE[entry.bundledSourceKey] || '';
+  }
+  return '';
+}
+
+function tmGetActiveTemplateSource(entry) {
+  return tmReadRegistryTemplate(entry) || tmGetBundledTemplateSource(entry) || '';
+}
+
+function tmTemplateUsesPartial(src, partialName) {
+  if (!src || !partialName) return false;
+  const escaped = String(partialName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const directCall = new RegExp('{{\\s*>\\s*' + escaped + '(?=[\\s}])');
+  return directCall.test(String(src));
+}
+
+function tmGetPartialConsumerEntries(entry) {
+  if (!entry || !entry.partialName) return [];
+  const sectionIds = entry.partialName === 'step_body'
+    ? ['uc.origin', 'uc.auto']
+    : ['uc.mainOutput', 'uc.outputLegacy'];
+  return tmListRegistryEntries().filter(function(item) {
+    return sectionIds.includes(item.id);
+  });
+}
+
+function tmGetPartialUsageInfo(entry) {
+  if (!entry || entry.category !== 'partial' || !entry.partialName) {
+    return { isReferenced: true, message: '' };
+  }
+
+  const consumers = tmGetPartialConsumerEntries(entry).filter(function(sectionEntry) {
+    return !!tmGetActiveTemplateSource(sectionEntry);
+  });
+
+  if (!consumers.length) {
+    return { isReferenced: true, message: '' };
+  }
+
+  const referencedBy = consumers.filter(function(sectionEntry) {
+    return tmTemplateUsesPartial(tmGetActiveTemplateSource(sectionEntry), entry.partialName);
+  });
+
+  if (referencedBy.length) {
+    return { isReferenced: true, message: '' };
+  }
+
+  const consumerNames = consumers.map(function(sectionEntry) {
+    return sectionEntry.uploadName;
+  }).join(', ');
+
+  return {
+    isReferenced: false,
+    message: 'Không được template đang hoạt động gọi tới (' + consumerNames + '), nên thay đổi ở đây sẽ không ảnh hưởng code gen.'
+  };
+}
+
+function tmIsRegistryEntryRequired(entry, tplCtx) {
+  if (!entry) return false;
+  if (entry.id === 'uc.outputLegacy') return false;
+  const usageInfo = tmGetPartialUsageInfo(entry);
+  if (entry.id === 'uc.deviceCylinder') {
+    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'cylinder'; }));
+  }
+  if (entry.id === 'uc.deviceServo') {
+    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'servo'; }));
+  }
+  if (entry.id === 'uc.deviceMotor') {
+    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'motor'; }));
+  }
+  if (entry.id === 'uc.stepBody') {
+    return usageInfo.isReferenced;
+  }
+  return true;
+}
+
+function tmBuildUnitConfigTemplateContext(selectedUnitId) {
+  if (!UC_UNIT_CONFIG) return null;
+  if (typeof cgUCBuildContext !== 'function' || typeof cgUCBuildTemplateContext !== 'function') {
+    return null;
+  }
+  const ctx = cgUCBuildContext(UC_UNIT_CONFIG, selectedUnitId);
+  return cgUCBuildTemplateContext(ctx);
+}
+
+function tmParseMissingPartialName(message) {
+  if (!message) return '';
+  const match = String(message).match(/partial\s+([A-Za-z0-9_-]+)\s+could not be found/i);
+  return match ? match[1] : '';
+}
+
+function tmProbeTemplateRender(entry, tplCtx) {
+  const src = tmGetActiveTemplateSource(entry);
+  if (!src) return null;
+  try {
+    Handlebars.compile(src)(tplCtx);
+    return null;
+  } catch (e) {
+    return e && e.message ? e.message : String(e);
+  }
+}
+
+function tmCreateHealthEntry(entry, tplCtx) {
+  const customSrc = tmReadRegistryTemplate(entry);
+  const bundledSrc = tmGetBundledTemplateSource(entry);
+  const issue = tmGetTemplateIssue(entry);
+  const usageInfo = tmGetPartialUsageInfo(entry);
+  const required = tmIsRegistryEntryRequired(entry, tplCtx);
+  const source = customSrc || bundledSrc || '';
+  const healthEntry = {
+    id: entry.id,
+    entry: entry,
+    required: required,
+    sourceType: customSrc ? 'custom' : 'bundled',
+    status: customSrc ? 'Custom' : 'Bundled',
+    message: '',
+    hasSource: !!source,
+  };
+
+  if (!source) {
+    healthEntry.status = required ? 'Missing' : 'Bundled';
+    healthEntry.message = required ? 'Thiếu template khả dụng cho entry này.' : '';
+    return healthEntry;
+  }
+
+  const compileErr = tmValidateTemplate(source);
+  if (compileErr) {
+    healthEntry.status = 'Invalid';
+    healthEntry.message = compileErr;
+    return healthEntry;
+  }
+
+  if (issue) {
+    healthEntry.status = issue.type === 'missing' ? 'Missing' : 'Invalid';
+    healthEntry.message = issue.message;
+  }
+
+  if (!healthEntry.message && usageInfo.message) {
+    healthEntry.message = usageInfo.message;
+  }
+
+  return healthEntry;
+}
+
+function tmGetUnitConfigTemplateHealth(selectedUnitId) {
+  const contextError = [];
+  let tplCtx = null;
+  if (UC_UNIT_CONFIG) {
+    try {
+      tplCtx = tmBuildUnitConfigTemplateContext(selectedUnitId);
+    } catch (e) {
+      contextError.push(e && e.message ? e.message : String(e));
+    }
+  }
+
+  const entryMap = Object.create(null);
+  const errors = [];
+  tmListRegistryEntries().forEach(function(entry) {
+    entryMap[entry.id] = tmCreateHealthEntry(entry, tplCtx);
+    if ((entryMap[entry.id].status === 'Missing' || entryMap[entry.id].status === 'Invalid') && entryMap[entry.id].required) {
+      errors.push(entry.uploadName + ': ' + entryMap[entry.id].message);
+    }
+  });
+
+  if (!contextError.length && tplCtx && typeof Handlebars !== 'undefined') {
+    tmListRegistryEntries().filter(function(entry) {
+      return entry.category === 'partial';
+    }).forEach(function(entry) {
+      const src = tmGetActiveTemplateSource(entry);
+      if (src && entry.partialName) {
+        Handlebars.registerPartial(entry.partialName, src);
+      }
+    });
+
+    tmListRegistryEntries().filter(function(entry) {
+      return entry.category === 'section' && tmIsRegistryEntryRequired(entry, tplCtx);
+    }).forEach(function(entry) {
+      const current = entryMap[entry.id];
+      if (!current || current.status === 'Invalid' || current.status === 'Missing') return;
+      const renderErr = tmProbeTemplateRender(entry, tplCtx);
+      if (!renderErr) return;
+
+      const missingPartialName = tmParseMissingPartialName(renderErr);
+      if (missingPartialName) {
+        const partialEntry = tmGetRegistryEntryByPartialName(missingPartialName);
+        if (partialEntry) {
+          entryMap[partialEntry.id].status = 'Missing';
+          entryMap[partialEntry.id].message = renderErr;
+          if (entryMap[partialEntry.id].required) {
+            errors.push(partialEntry.uploadName + ': ' + renderErr);
+          }
+          return;
+        }
+      }
+
+      current.status = 'Invalid';
+      current.message = renderErr;
+      errors.push(entry.uploadName + ': ' + renderErr);
+    });
+  }
+
+  contextError.forEach(function(message) {
+    errors.push('Context: ' + message);
+  });
+
+  return {
+    valid: errors.length === 0,
+    entries: tmListRegistryEntries().map(function(entry) { return entryMap[entry.id]; }),
+    errors: Array.from(new Set(errors)),
+    contextError: contextError,
+    hasContext: !!tplCtx,
+  };
+}
+
+function tmGetHealthEntry(health, entryId) {
+  return (health && health.entries || []).find(function(item) {
+    return item && item.id === entryId;
+  }) || null;
+}
+
+function tmRenderHealthSummary(list, health) {
+  if (!list || !health) return;
+  const box = document.createElement('div');
+  const isValid = !!health.valid;
+  box.style.cssText = 'margin:0 0 8px 0;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:' +
+    (isValid ? 'var(--bg)' : 'rgba(239, 68, 68, 0.08)') + ';';
+  const headline = document.createElement('div');
+  headline.style.cssText = 'font-size:9px;color:' + (isValid ? 'var(--cyan)' : '#fca5a5') + ';letter-spacing:1px;';
+  headline.textContent = isValid ? 'TEMPLATE HEALTH: OK' : 'TEMPLATE HEALTH: BLOCKED';
+  box.appendChild(headline);
+  if (!isValid) {
+    const details = document.createElement('div');
+    details.style.cssText = 'margin-top:4px;font-size:9px;color:var(--text2);white-space:pre-wrap;';
+    details.textContent = health.errors.slice(0, 4).join('\n');
+    box.appendChild(details);
+  }
+  list.appendChild(box);
+}
+
+function tmMigrateLegacyUnitConfigTemplates() {
+  tmListRegistryEntries().forEach(function(entry) {
+    const stored = localStorage.getItem(entry.storageKey);
+    if (stored) return;
+    const legacyKey = tmGetLegacyStorageKeys(entry).find(function(key) {
+      return localStorage.getItem(key);
+    });
+    if (!legacyKey) return;
+    const src = localStorage.getItem(legacyKey);
+    if (!src) return;
+    localStorage.setItem(entry.storageKey, src);
+    tmGetLegacyStorageKeys(entry).forEach(function(key) {
+      localStorage.removeItem(key);
+    });
+  });
+}
 
 /**
  * Return the custom template string stored for the given filename,
@@ -29,7 +534,9 @@
  * @returns {string|null}
  */
 function tmGetCustomTemplate(filename) {
-  return localStorage.getItem('custom_tpl_' + filename);
+  const entry = tmGetRegistryEntry(filename);
+  if (entry) return tmReadRegistryTemplate(entry);
+  return localStorage.getItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename));
 }
 
 /**
@@ -38,7 +545,13 @@ function tmGetCustomTemplate(filename) {
  * @param {string} src
  */
 function tmSetCustomTemplate(filename, src) {
-  localStorage.setItem('custom_tpl_' + filename, src);
+  const entry = tmGetRegistryEntry(filename);
+  if (entry) {
+    tmRemoveRegistryTemplate(entry);
+    localStorage.setItem(entry.storageKey, src);
+    return;
+  }
+  localStorage.setItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename), src);
 }
 
 /**
@@ -46,7 +559,12 @@ function tmSetCustomTemplate(filename, src) {
  * @param {string} filename
  */
 function tmResetTemplate(filename) {
-  localStorage.removeItem('custom_tpl_' + filename);
+  const entry = tmGetRegistryEntry(filename);
+  if (entry) {
+    tmRemoveRegistryTemplate(entry);
+    return;
+  }
+  localStorage.removeItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename));
 }
 
 /**
@@ -54,14 +572,163 @@ function tmResetTemplate(filename) {
  * @returns {string[]}
  */
 function tmListCustomTemplates() {
-  const results = [];
+  const results = new Set();
+  tmListRegistryEntries().forEach(function(entry) {
+    if (tmReadRegistryTemplate(entry)) {
+      results.add(entry.uploadName);
+    }
+  });
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && key.startsWith('custom_tpl_')) {
-      results.push(key.slice('custom_tpl_'.length));
-    }
+    if (!key || !key.startsWith(TM_STORAGE_PREFIX)) continue;
+    if (TM_REGISTRY_BY_STORAGE_KEY[key]) continue;
+    const filename = key.slice(TM_STORAGE_PREFIX.length);
+    if (TM_REGISTRY_UPLOAD_NAMES.has(filename) || TM_REGISTRY_LEGACY_FILENAMES.has(filename)) continue;
+    results.add(filename);
   }
-  return results;
+  return Array.from(results);
+}
+
+function tmListLegacyLoadedTemplates() {
+  return tmListCustomTemplates().filter(function(filename) {
+    return !tmGetRegistryEntry(filename);
+  }).sort();
+}
+
+function tmIsAcceptedUpload(filename) {
+  const normalized = tmNormalizeFilename(filename);
+  return !!tmGetRegistryEntry(filename) || !!TM_LEGACY_ALLOWED_FILES[normalized];
+}
+
+function tmGetUploadTargetName(filename) {
+  const entry = tmGetRegistryEntry(filename);
+  return entry ? entry.uploadName : tmNormalizeFilename(filename);
+}
+
+function tmRegisterCustomPartial(filename, src) {
+  if (typeof Handlebars === 'undefined') return;
+  const entry = tmGetRegistryEntry(filename);
+  if (entry && entry.partialName) {
+    Handlebars.registerPartial(entry.partialName, src);
+    return;
+  }
+  const base = tmNormalizeFilename(filename).replace(/\.hbs$/i, '');
+  const partialName = base.replace(/-/g, '_');
+  if (base.toLowerCase().includes('body') || base.toLowerCase().includes('partial')) {
+    Handlebars.registerPartial(partialName, src);
+  }
+}
+
+function tmRestoreBundledTemplate(entry) {
+  if (!entry) return;
+  if (entry.bundledSourceType === 'template' && typeof UC_TEMPLATE_BUNDLE !== 'undefined' && typeof UC_TEMPLATE_CACHE !== 'undefined') {
+    const defaultSrc = UC_TEMPLATE_BUNDLE[entry.bundledSourceKey];
+    if (defaultSrc) {
+      UC_TEMPLATE_CACHE[entry.cacheKey] = Handlebars.compile(defaultSrc);
+    } else if (entry.cacheKey) {
+      delete UC_TEMPLATE_CACHE[entry.cacheKey];
+    }
+    return;
+  }
+  if (entry.bundledSourceType === 'partial' && typeof UC_PARTIAL_BUNDLE !== 'undefined' && entry.partialName) {
+    const defaultPartial = UC_PARTIAL_BUNDLE[entry.bundledSourceKey];
+    if (defaultPartial) Handlebars.registerPartial(entry.partialName, defaultPartial);
+  }
+}
+
+function tmCreateManagerRow(name, description, statusText, statusKind, canReset, onReset) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+
+  const nameSpan = document.createElement('span');
+  nameSpan.style.cssText = 'font-size:10px;color:var(--cyan);font-family:\'JetBrains Mono\',monospace;min-width:140px;';
+  nameSpan.textContent = name;
+
+  const descSpan = document.createElement('span');
+  descSpan.style.cssText = 'flex:1;font-size:9px;color:var(--text3);';
+  descSpan.textContent = description;
+
+  const statusSpan = document.createElement('span');
+  const statusColor = statusKind === 'invalid'
+    ? '#fca5a5'
+    : statusKind === 'missing'
+      ? 'var(--amber)'
+      : statusKind === 'custom'
+        ? 'var(--amber)'
+        : 'var(--text3)';
+  statusSpan.style.cssText = 'font-size:9px;color:' + statusColor + ';min-width:58px;text-align:right;';
+  statusSpan.textContent = statusText;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.style.cssText = 'padding:1px 7px;font-size:9px;';
+  btn.textContent = '↺ Reset';
+  btn.disabled = !canReset;
+  btn.addEventListener('click', onReset);
+
+  row.appendChild(nameSpan);
+  row.appendChild(descSpan);
+  row.appendChild(statusSpan);
+  row.appendChild(btn);
+  return row;
+}
+
+function tmRenderRegistryGroup(list, groupKey, title, health) {
+  const entries = tmListRegistryEntries().filter(function(entry) {
+    return entry.group === groupKey;
+  });
+  if (!entries.length) return;
+
+  const heading = document.createElement('div');
+  heading.style.cssText = 'margin:8px 0 4px 0;font-size:9px;color:var(--text3);letter-spacing:1px;';
+  heading.textContent = title;
+  list.appendChild(heading);
+
+  entries.forEach(function(entry) {
+    const healthEntry = tmGetHealthEntry(health, entry.id);
+    const isCustom = !!tmReadRegistryTemplate(entry);
+    const canReset = isCustom || !!(healthEntry && healthEntry.message);
+    const statusText = healthEntry ? healthEntry.status : (isCustom ? 'Custom' : 'Bundled');
+    const statusKind = statusText === 'Invalid'
+      ? 'invalid'
+      : statusText === 'Missing'
+        ? 'missing'
+        : isCustom
+          ? 'custom'
+          : 'bundled';
+    const desc = healthEntry && healthEntry.message
+      ? entry.description + ' — ' + healthEntry.message
+      : entry.description;
+    list.appendChild(tmCreateManagerRow(
+      entry.uploadName,
+      desc,
+      statusText,
+      statusKind,
+      canReset,
+      function() { tmResetAndRefresh(entry.uploadName); }
+    ));
+  });
+}
+
+function tmRenderLegacyGroup(list) {
+  const loaded = tmListLegacyLoadedTemplates();
+  if (!loaded.length) return;
+
+  const heading = document.createElement('div');
+  heading.style.cssText = 'margin:8px 0 4px 0;font-size:9px;color:var(--text3);letter-spacing:1px;';
+  heading.textContent = 'OTHER TEMPLATES';
+  list.appendChild(heading);
+
+  loaded.forEach(function(filename) {
+    list.appendChild(tmCreateManagerRow(
+      filename,
+      tmDescribeFile(filename),
+      'Custom',
+      'custom',
+      true,
+      function() { tmResetAndRefresh(filename); }
+    ));
+  });
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -89,13 +756,7 @@ function tmValidateTemplate(src) {
  * @param {string} src
  */
 function tmMaybeRegisterPartial(filename, src) {
-  if (typeof Handlebars === 'undefined') return;
-  const base = filename.replace(/\.hbs$/i, '');
-  // Normalise: replace hyphens with underscores for partial names
-  const partialName = base.replace(/-/g, '_');
-  if (base.toLowerCase().includes('body') || base.toLowerCase().includes('partial')) {
-    Handlebars.registerPartial(partialName, src);
-  }
+  tmRegisterCustomPartial(filename, src);
 }
 
 // ─── File loading ─────────────────────────────────────────────────────────────
@@ -110,20 +771,28 @@ function tmMaybeRegisterPartial(filename, src) {
 function tmHandleFileUpload(files) {
   if (!files || !files.length) return;
   Array.from(files).forEach(function(file) {
+    const uploadName = tmGetUploadTargetName(file.name);
     if (!file.name.endsWith('.hbs')) return;
+    if (!tmIsAcceptedUpload(file.name)) {
+      toast('⚠ Không hỗ trợ template: ' + escHtml(file.name));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = function(e) {
       const src = e.target.result;
       const err = tmValidateTemplate(src);
       if (err) {
         // Show a safe, truncated error message; log the full message for debugging
-        console.warn('[template-manager] syntax error in', file.name, ':', err);
-        toast('⚠ Template "' + escHtml(file.name) + '" có lỗi cú pháp. Xem console để biết chi tiết.');
+        tmSetTemplateIssue(uploadName, 'syntax', err);
+        console.warn('[template-manager] syntax error in', uploadName, ':', err);
+        toast('⚠ Template "' + escHtml(uploadName) + '" có lỗi cú pháp. Xem console để biết chi tiết.');
+        tmRenderManagerList();
         return;
       }
-      tmSetCustomTemplate(file.name, src);
-      tmMaybeRegisterPartial(file.name, src);
-      toast('✓ Đã nạp template: ' + file.name);
+      tmClearTemplateIssue(uploadName);
+      tmSetCustomTemplate(uploadName, src);
+      tmMaybeRegisterPartial(uploadName, src);
+      toast('✓ Đã nạp template: ' + uploadName);
       tmRenderManagerList();
       // Re-apply to UC_TEMPLATE_CACHE so the next preview reflects the change
       tmApplyCustomTemplatesToCache();
@@ -134,22 +803,6 @@ function tmHandleFileUpload(files) {
 }
 
 // ─── Apply custom templates to cache ─────────────────────────────────────────
-
-// Mapping: filename → UC_TEMPLATE_CACHE key
-const TM_UC_FILE_MAP = {
-  'auto.hbs':        'auto',
-  'manual.hbs':      'manual',
-  'error.hbs':       'error',
-  'origin.hbs':      'origin',
-  'output.hbs':      'output',
-  'main-output.hbs': 'main-output',
-  'step-body.hbs':   null,  // handled as partial only
-};
-
-// Mapping: filename → UC_PARTIAL_BUNDLE key / Handlebars partial name
-const TM_UC_PARTIAL_MAP = {
-  'step-body.hbs': 'step_body',
-};
 
 /**
  * Apply all custom templates currently in localStorage to:
@@ -165,27 +818,19 @@ function tmApplyCustomTemplatesToCache() {
     ucRegisterHandlebarsHelpers();
   }
 
-  const loaded = tmListCustomTemplates();
-  loaded.forEach(function(filename) {
-    const src = tmGetCustomTemplate(filename);
+  tmListRegistryEntries().forEach(function(entry) {
+    const src = tmReadRegistryTemplate(entry);
     if (!src) return;
 
-    // Register as partial if applicable
-    tmMaybeRegisterPartial(filename, src);
-
-    // Also check the explicit partial map
-    const partialName = TM_UC_PARTIAL_MAP[filename];
-    if (partialName) {
-      Handlebars.registerPartial(partialName, src);
+    if (entry.partialName) {
+      Handlebars.registerPartial(entry.partialName, src);
     }
 
-    // Update UC_TEMPLATE_CACHE if it's a main template
-    const cacheKey = TM_UC_FILE_MAP[filename];
-    if (cacheKey) {
+    if (entry.cacheKey) {
       try {
-        UC_TEMPLATE_CACHE[cacheKey] = Handlebars.compile(src);
+        UC_TEMPLATE_CACHE[entry.cacheKey] = Handlebars.compile(src);
       } catch (e) {
-        console.warn('[template-manager] compile error for', filename, e);
+        console.warn('[template-manager] compile error for', entry.uploadName, e);
       }
     }
   });
@@ -200,38 +845,13 @@ function tmApplyCustomTemplatesToCache() {
 function tmRenderManagerList() {
   const list = document.getElementById('tpl-manager-list');
   if (!list) return;
-  const loaded = tmListCustomTemplates();
-  if (!loaded.length) {
-    list.innerHTML = '<span style="font-size:9px;color:var(--text3)">Chưa có template tùy chỉnh nào.</span>';
-    return;
-  }
+  const selectedUnitId = typeof cgUCGetSelectedUnitId === 'function' ? cgUCGetSelectedUnitId() : null;
+  const health = tmGetUnitConfigTemplateHealth(selectedUnitId);
   list.innerHTML = '';
-  loaded.sort().forEach(function(filename) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
-
-    const nameSpan = document.createElement('span');
-    nameSpan.style.cssText = 'font-size:10px;color:var(--cyan);font-family:\'JetBrains Mono\',monospace;';
-    nameSpan.textContent = filename;
-
-    const descSpan = document.createElement('span');
-    descSpan.style.cssText = 'flex:1;font-size:9px;color:var(--text3);';
-    descSpan.textContent = tmDescribeFile(filename);
-
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.style.cssText = 'padding:1px 7px;font-size:9px;';
-    btn.textContent = '↺ Reset';
-    btn.dataset.filename = filename;
-    btn.addEventListener('click', function() {
-      tmResetAndRefresh(this.dataset.filename);
-    });
-
-    row.appendChild(nameSpan);
-    row.appendChild(descSpan);
-    row.appendChild(btn);
-    list.appendChild(row);
-  });
+  tmRenderHealthSummary(list, health);
+  tmRenderRegistryGroup(list, 'sections', 'SECTIONS', health);
+  tmRenderRegistryGroup(list, 'device-partials', 'DEVICE PARTIALS', health);
+  tmRenderLegacyGroup(list);
 }
 
 /**
@@ -239,24 +859,11 @@ function tmRenderManagerList() {
  * @param {string} filename
  */
 function tmResetAndRefresh(filename) {
+  const entry = tmGetRegistryEntry(filename);
   tmResetTemplate(filename);
-  // Restore default for this key in UC_TEMPLATE_CACHE from bundle
-  const cacheKey = TM_UC_FILE_MAP[filename];
-  if (cacheKey && typeof UC_TEMPLATE_BUNDLE !== 'undefined' && typeof UC_TEMPLATE_CACHE !== 'undefined') {
-    const defaultSrc = UC_TEMPLATE_BUNDLE[cacheKey];
-    if (defaultSrc) {
-      UC_TEMPLATE_CACHE[cacheKey] = Handlebars.compile(defaultSrc);
-    } else {
-      delete UC_TEMPLATE_CACHE[cacheKey];
-    }
-  }
-  // Restore default partial
-  const partialName = TM_UC_PARTIAL_MAP[filename];
-  if (partialName && typeof UC_PARTIAL_BUNDLE !== 'undefined') {
-    const defaultPartial = UC_PARTIAL_BUNDLE[partialName];
-    if (defaultPartial) Handlebars.registerPartial(partialName, defaultPartial);
-  }
-  toast('↺ Đã khôi phục template mặc định: ' + filename);
+  tmClearTemplateIssue(filename);
+  if (entry) tmRestoreBundledTemplate(entry);
+  toast('↺ Đã khôi phục template mặc định: ' + tmGetUploadTargetName(filename));
   tmRenderManagerList();
   if (typeof cgUpdatePreview === 'function') cgUpdatePreview();
 }
@@ -267,11 +874,11 @@ function tmResetAndRefresh(filename) {
  * @returns {string}
  */
 function tmDescribeFile(filename) {
+  const entry = tmGetRegistryEntry(filename);
+  if (entry) return '→ ' + entry.description;
   const kvFiles = ['kv_main.hbs', 'kv_step.hbs'];
-  const ucFiles = ['auto.hbs', 'manual.hbs', 'step-body.hbs', 'error.hbs', 'origin.hbs', 'output.hbs', 'main-output.hbs'];
   const stFiles = ['st_main.hbs'];
   if (kvFiles.includes(filename)) return '→ KV5500 Mnemonic';
-  if (ucFiles.includes(filename)) return '→ Unit Config JSON';
   if (stFiles.includes(filename)) return '→ Structured Text';
   return '→ Custom';
 }
@@ -291,6 +898,7 @@ function escHtml(s) {
   // Defer until the rest of the page scripts have run.
   // Using a zero-timeout ensures UC_TEMPLATE_CACHE is defined.
   setTimeout(function() {
+    tmMigrateLegacyUnitConfigTemplates();
     tmApplyCustomTemplatesToCache();
   }, 0);
 })();

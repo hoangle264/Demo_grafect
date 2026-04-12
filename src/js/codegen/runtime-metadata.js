@@ -9,18 +9,26 @@
 function cgRuntimeGuessFeedbackSignalNames(executeSignalName) {
   if (!executeSignalName) return [];
 
+  const rawName = String(executeSignalName).trim();
+  const upperName = rawName.toUpperCase();
   const results = [];
-  if (executeSignalName.endsWith('_SOL')) {
-    const stem = executeSignalName.slice(0, -4);
+  if (upperName === 'COILA') {
+    results.push('LSH');
+  }
+  if (upperName === 'COILB') {
+    results.push('LSL');
+  }
+  if (rawName.endsWith('_SOL')) {
+    const stem = rawName.slice(0, -4);
     results.push(stem + '_SNS');
   }
-  if (executeSignalName.startsWith('Out_')) {
-    const stem = executeSignalName.slice(4);
+  if (rawName.startsWith('Out_')) {
+    const stem = rawName.slice(4);
     results.push('In_' + stem);
     results.push(stem + '_SNS');
   }
-  if (executeSignalName.endsWith('_CMD')) {
-    const stem = executeSignalName.slice(0, -4);
+  if (rawName.endsWith('_CMD')) {
+    const stem = rawName.slice(0, -4);
     results.push(stem + '_FB');
     results.push(stem + '_SNS');
   }

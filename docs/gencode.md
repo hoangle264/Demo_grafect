@@ -190,3 +190,105 @@ LD lastStep.cmpAddr → DIFU @MR011 → ZRES @MR300 @MR315
 - File picker: **Unit Config JSON** (bắt buộc) + Cylinder Types (optional, không dùng)
 - Ẩn base-MR input và diagram selector khi chọn unit-config mode
 - Download file `.mnm`
+
+---
+
+## Custom Template Library
+
+Template Manager trong modal Generate Code hỗ trợ nạp thủ công bộ `.hbs` để thay đổi logic sinh mã cho Unit Config.
+
+### Upload names được hỗ trợ
+
+- `error.hbs`
+- `manual.hbs`
+- `origin.hbs`
+- `auto.hbs`
+- `main-output.hbs`
+- `output.hbs`
+- `step-body.hbs`
+- `cylinder.hbs`
+- `servo.hbs`
+- `motor.hbs`
+
+Lưu ý: input file hiện chỉ đọc `file.name`, nên người dùng chỉ cần giữ đúng tên file; không cần giữ path thư mục như `devices/cylinder.hbs`.
+
+### Hành vi lưu trữ
+
+- Template custom được lưu trong `localStorage`.
+- Project/flow chart vẫn là artifact chính để cộng tác trong team.
+- File `.hbs` chỉ cần chia sẻ riêng khi muốn tái sử dụng đúng cùng một logic code generation.
+
+### Validation
+
+- Template lỗi cú pháp hoặc thiếu partial bắt buộc sẽ làm Unit Config preview bị chặn.
+- `Copy` và `Download` cũng bị chặn khi Template Manager báo trạng thái invalid.
+- KV/ST templates cũ (`kv_main.hbs`, `kv_step.hbs`, `st_main.hbs`) vẫn được giữ như legacy path, không dùng registry Unit Config mới.
+
+---
+
+## Sơ đồ pipeline end-to-end
+
+```mermaid
+flowchart TD
+    A[User opens Generate Code modal] --> B[showGenerateCodeModal in modal.js]
+    B --> C[User selects target and inputs]
+    C --> D[cgUpdatePreview]
+
+    D --> E{Target type}
+
+    E -->|Unit Config JSON| F[Load Unit Config JSON and optional metadata]
+    F --> G[Template health check via Template Manager]
+    G --> H{Templates valid?}
+    H -->|No| I[Block preview copy download and show errors]
+    H -->|Yes| J[cgGenerateFromUnitConfig]
+
+    J --> K[cgUCBuildContext]
+    K --> K1[Read unit flags IO devices from unit config JSON]
+    K --> K2[Read project diagrams for selected unit]
+    K --> K3[Resolve step sequence from canvas connections]
+    K --> K4[Read Variable Table to map SOL and SNS physical addresses]
+
+    K1 --> L[cgUCBuildTemplateContext]
+    K2 --> L
+    K3 --> L
+    K4 --> L
+
+    L --> M{UC templates ready?}
+    M -->|Yes| N[Render 5 sections with Handlebars strict mode]
+    N --> N1[Error]
+    N --> N2[Manual]
+    N --> N3[Origin]
+    N --> N4[Auto]
+    N --> N5[Main Output or legacy Output]
+
+    M -->|No and strict| O[Throw template bundle not ready error]
+    M -->|No and non-strict fallback path| P[Use hardcoded JS generators]
+
+    N1 --> Q[cgApplyProfile]
+    N2 --> Q
+    N3 --> Q
+    N4 --> Q
+    N5 --> Q
+    P --> Q
+    Q --> R[Preview highlighted code and enable copy download]
+
+    E -->|KV or other PLC canvas mode| S[Collect selected diagrams and base MR]
+    S --> T[generateKVAll or generateSTDemo]
+    T --> U[cgResolveSequence for each diagram]
+    U --> V[Allocate MR exec done addresses]
+    V --> W[Group by unit and mode]
+    W --> X[Generate sections and output logic]
+    X --> Y[cgApplyProfile]
+    Y --> Z[Preview highlighted code and enable copy download]
+
+    subgraph Template Sources
+      TS1[Bundled templates in templates-bundle.js]
+      TS2[Runtime custom .hbs from Template Manager localStorage]
+      TS3[Optional fetch from templates directory]
+    end
+
+    TS1 --> M
+    TS2 --> G
+    TS2 --> M
+    TS3 --> M
+```

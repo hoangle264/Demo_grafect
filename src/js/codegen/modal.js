@@ -144,12 +144,20 @@ function showGenerateCodeModal() {
         <div id="tpl-manager-body" style="display:none;padding:0 20px 10px 20px;">
           <div id="tpl-manager-list" style="margin-top:4px;"></div>
           <div style="margin-top:6px;font-size:9px;color:var(--text3);">
-            Hỗ trợ: <code style="color:var(--cyan)">kv_main.hbs</code>,
-            <code style="color:var(--cyan)">kv_step.hbs</code>,
-            <code style="color:var(--cyan)">auto.hbs</code>,
+            Hỗ trợ Unit Config: <code style="color:var(--cyan)">error.hbs</code>,
             <code style="color:var(--cyan)">manual.hbs</code>,
+            <code style="color:var(--cyan)">origin.hbs</code>,
+            <code style="color:var(--cyan)">auto.hbs</code>,
+            <code style="color:var(--cyan)">main-output.hbs</code>,
+            <code style="color:var(--cyan)">output.hbs</code>,
             <code style="color:var(--cyan)">step-body.hbs</code>,
-            <code style="color:var(--cyan)">st_main.hbs</code>, …
+            <code style="color:var(--cyan)">cylinder.hbs</code>,
+            <code style="color:var(--cyan)">servo.hbs</code>,
+            <code style="color:var(--cyan)">motor.hbs</code>.
+            <br>Legacy vẫn hỗ trợ: <code style="color:var(--cyan)">kv_main.hbs</code>,
+            <code style="color:var(--cyan)">kv_step.hbs</code>,
+            <code style="color:var(--cyan)">st_main.hbs</code>.
+            <br>Ghi chú: upload theo đúng tên file, không cần giữ path thư mục như <code style="color:var(--cyan)">devices/...</code>.
             <br>Ghi chú: <code style="color:var(--cyan)">kv_step.hbs</code> dùng cú pháp
             <code>${"$"}{prevStepDone}</code>/<code>${"$"}{stepExe}</code>/<code>${"$"}{stepDone}</code>.
             Phân tách block activation và feedback bằng dòng <code>;;;</code> (3 dấu chấm phẩy).
@@ -312,6 +320,39 @@ function cgSelectAll(val) {
   cgUpdatePreview();
 }
 
+function cgUCGetTemplateHealth() {
+  if (typeof tmGetUnitConfigTemplateHealth !== 'function') {
+    return { valid: true, errors: [], entries: [] };
+  }
+  return tmGetUnitConfigTemplateHealth(cgUCGetSelectedUnitId());
+}
+
+function cgUCFormatTemplateHealth(health) {
+  const lines = ['; ⚠ Template library is blocking generation.'];
+  (health.errors || []).forEach(function(message) {
+    lines.push('; - ' + message);
+  });
+  if (!health.errors || !health.errors.length) {
+    lines.push('; - Unknown template validation error.');
+  }
+  lines.push('; Kiểm tra Template Manager để sửa hoặc reset template lỗi.');
+  return lines.join('\n');
+}
+
+function cgUCBlockInvalidTemplates(pre, stat, health) {
+  if (pre) pre.textContent = cgUCFormatTemplateHealth(health);
+  if (stat) stat.textContent = 'Template Manager blocked generation';
+  if (typeof tmRenderManagerList === 'function') tmRenderManagerList();
+}
+
+function cgUCEnsureTemplateHealth(actionLabel) {
+  const health = cgUCGetTemplateHealth();
+  if (health.valid) return health;
+  toast('⚠ Không thể ' + actionLabel + ': template library đang lỗi.');
+  if (typeof tmRenderManagerList === 'function') tmRenderManagerList();
+  return null;
+}
+
 // ─── Live preview ─────────────────────────────────────────────────────────────
 function cgUpdatePreview() {
   const target = document.getElementById('cg-target')?.value || 'kv-5500';
@@ -337,10 +378,17 @@ function cgUpdatePreview() {
       if (stat) stat.textContent = 'Unit Config mode — chờ load file JSON';
       return;
     }
+    const health = cgUCGetTemplateHealth();
+    if (!health.valid) {
+      cgUCBlockInvalidTemplates(pre, stat, health);
+      return;
+    }
     const profile        = PLC_PROFILES['kv-5500'];
     const selectedUnitId = cgUCGetSelectedUnitId();
     try {
-      const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
+      const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
+        strictTemplates: true
+      });
       pre.textContent = result.code;
       if (stat) stat.textContent = result.stats;
       // Syntax highlight
@@ -481,9 +529,12 @@ function cgDownloadCode() {
       toast('⚠ Load Unit Config JSON trước');
       return;
     }
+    if (!cgUCEnsureTemplateHealth('download code')) return;
     const profile        = PLC_PROFILES['kv-5500'];
     const selectedUnitId = cgUCGetSelectedUnitId();
-    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId);
+    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
+      strictTemplates: true
+    });
     const label   = (UC_UNIT_CONFIG.unit?.label || 'unit').replace(/\s+/g, '_');
     const blob = new Blob([result.code], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
@@ -539,6 +590,10 @@ function cgDownloadCode() {
 }
 
 function cgCopyCode() {
+  const target = document.getElementById('cg-target')?.value || 'kv-5500';
+  if (target === 'unit-config' && !cgUCEnsureTemplateHealth('copy code')) {
+    return;
+  }
   const pre = document.getElementById('cg-preview');
   if (!pre) return;
   navigator.clipboard.writeText(pre.textContent).then(() => toast('✓ Copied to clipboard'));

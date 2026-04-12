@@ -70,7 +70,7 @@ Current sample file:
 Supported examples in the sample:
 - `Out_Up -> In_Up`
 - `Up_SOL -> Up_SNS`
-- `coilA -> lsh`
+- `CoilA -> LSH`
 
 ## Recommended Next Step
 
