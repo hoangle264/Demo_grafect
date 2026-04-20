@@ -287,11 +287,11 @@ ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}
   'main-output': `;<h1>OUTPUT SECTION (AUTO/MANUAL)
 {{#each devices}}
 {{#if (eq kind "cylinder")}}
-{{> device_cylinder }}
+{{> device_cylinder unit=unit }}
 {{else if (eq kind "servo")}}
-{{> device_servo }}
+{{> device_servo unit=unit }}
 {{else if (eq kind "motor")}}
-{{> device_motor }}
+{{> device_motor unit=unit }}
 {{else}}
 ; WARNING: Unknown device kind for {{{label}}}
 {{/if}}
@@ -318,23 +318,23 @@ SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
   device_cylinder: `{{#if hasOutput}}
 ;{{{label}}}
 {{#if hasDirAOutput}}
-LD   {{pad ../unit.flagAuto}}; Auto
+LD   {{pad unit.flagAuto}}; Auto
 AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
 ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
-LD   {{pad ../unit.flagManual}}; Manual
+LD   {{pad unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
 {{#if lockDirA}}
-ANB  {{pad lockDirA}}; {{{../unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+ANB  {{pad lockDirA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
 {{/if}}
-SET  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+SET  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 {{#if outDirB}}
 CON
-RES  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+RES  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{#if hasDirBOutput}}
-LD   {{pad ../unit.flagAuto}}; Auto
+LD   {{pad unit.flagAuto}}; Auto
 {{#if singleStepDirB}}
 LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
 ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
@@ -348,30 +348,30 @@ ORL
 {{/each}}
 {{/if}}
 ANL
-LD   {{pad ../unit.flagManual}}; Manual
+LD   {{pad unit.flagManual}}; Manual
 ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
 {{#if lockDirB}}
-ANB  {{pad lockDirB}}; {{{../unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+ANB  {{pad lockDirB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
 {{/if}}
 {{#if outDirA}}
-RES  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+RES  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 CON
 {{/if}}
-SET  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{#if errTimerDirA}}
-LD   {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad sensorDirA}}; FB_{{{../unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-ANB  {{pad ../unit.flagManual}}; Manual
-ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
+LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+ANB  {{pad unit.flagManual}}; Manual
+ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
-LD   {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad sensorDirB}}; FB_{{{../unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-ANB  {{pad ../unit.flagManual}}; Manual
-ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
+LD   {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad sensorDirB}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+ANB  {{pad unit.flagManual}}; Manual
+ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
 {{/if}}
 {{/if}}

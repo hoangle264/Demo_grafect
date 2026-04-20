@@ -641,6 +641,11 @@ function cgUCBuildContext(unitConfig, selectedUnitId) {
       if (!dirACandidates.length && dirBCandidates.length >= 2) {
         dirAName = dirBCandidates[1];
         dirBName = dirBCandidates[0];
+      } else if (!dirBName && dirACandidates.length >= 2) {
+        // Cả 2 hướng đều chỉ xuất hiện trong Station (không có Origin diagram,
+        // hoặc Origin không chứa action nào của cylinder này).
+        // → Hướng thứ 2 trong station được coi là dirB (chiều trở về trong auto cycle).
+        dirBName = dirACandidates[1];
       }
 
       // ── Lấy địa chỉ output từ Variable Table (ưu tiên) ──────────────────
@@ -1487,11 +1492,11 @@ function cgUCBuildTemplateContext(ctx) {
     const kind = dev.kind || 'cylinder';
     if (kind === 'cylinder') {
       const enriched = cylinderMap[dev.id];
-      if (enriched) return Object.assign({ kind: 'cylinder' }, enriched);
-      return Object.assign({ kind: 'cylinder' }, dev);
+      if (enriched) return Object.assign({ kind: 'cylinder', unit: u }, enriched);
+      return Object.assign({ kind: 'cylinder', unit: u }, dev);
     }
     // servo / motor: pass through raw JSON props with kind tag
-    return Object.assign({ kind: kind }, dev);
+    return Object.assign({ kind: kind, unit: u }, dev);
   });
 
   return {

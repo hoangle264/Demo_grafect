@@ -819,8 +819,17 @@ function tmApplyCustomTemplatesToCache() {
   }
 
   tmListRegistryEntries().forEach(function(entry) {
-    const src = tmReadRegistryTemplate(entry);
+    var src = tmReadRegistryTemplate(entry);
     if (!src) return;
+
+    // Auto-migrate device partials stored with old "../unit." path traversal.
+    // In Handlebars, partials do not inherit the caller's context stack, so
+    // "../unit." inside a partial always resolves to undefined. The correct
+    // path is "unit." (unit is now passed explicitly via hash arg).
+    if (entry.partialName && src.indexOf('../unit.') !== -1) {
+      src = src.replace(/\.\.\/unit\./g, 'unit.');
+      try { localStorage.setItem(entry.storageKey, src); } catch (e) {}
+    }
 
     if (entry.partialName) {
       Handlebars.registerPartial(entry.partialName, src);
