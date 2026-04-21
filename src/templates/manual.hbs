@@ -1,4 +1,8 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  MANUAL — Manual mode section                            ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;<h1/>Manual
+{{!-- ─── Manual flag: activation trigger ─────────────────────────────── --}}
 LDB  {{pad unit.flagAuto}}; Auto
 {{#if unit.hmiManual}}
 AND  {{pad unit.hmiManual}}; Hmi_{{{unit.label}}}_Manual
@@ -9,12 +13,15 @@ ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
 {{/if}}
 ANB  {{pad unit.flagManPEnd}}; Manual P end
 OUT  {{pad unit.flagManual}}; Manual
+{{!-- ─── HMI manual button: ALT toggle per cylinder ─────────────────── --}}
 {{#if hasCylinders}}
 LD   {{pad unit.flagManual}}; Manual
 {{#if isSingleCylinder}}
+{{!-- single cylinder: direct ANP + ALT --}}
 ANP  {{pad cylinders.[0].hmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
 ALT  {{pad cylinders.[0].sysManFlag}}; sys_man_{{{cylinders.[0].label}}}
 {{else}}
+{{!-- multiple cylinders: MPS/MRD/MPP stack via altStackInst --}}
 {{#each cylinders}}
 {{#if altStackInst}}
 {{{altStackInst}}}
@@ -24,9 +31,11 @@ ALT  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/each}}
 {{/if}}
 {{/if}}
+{{!-- ─── Output direction detection: SET/RES sysManFlag ─────────────── --}}
 {{#if hasCysWithOut}}
 LDB  {{pad unit.flagManual}}; Manual
 {{#if cysWithOutMultiple}}
+{{!-- multiple cylinders: MPS stack --}}
 MPS
 {{#each cysWithOut}}
 {{#if outDirA}}
@@ -43,6 +52,7 @@ RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{/each}}
 {{else}}
+{{!-- single cylinder with output --}}
 {{#with cysWithOut.[0]}}
 {{#if outDirA}}
 ANP  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
@@ -55,9 +65,10 @@ RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/with}}
 {{/if}}
 {{/if}}
+{{!-- ─── ZRES HMI buttons + ManPEnd pulse ────────────────────────────── --}}
 LDB  {{pad unit.flagManual}}; Manual
 {{#if showManBtnZres}}
 ZRES {{{unit.hmiManBtnBase}}} {{{unit.hmiManBtnEnd}}} ; Hmi_man _{{{firstCyLabel}}}
 {{/if}}
-LD   {{pad unit.flagAuto}}; Auto
+AND   {{pad unit.flagAuto}}; Auto
 DIFU {{pad unit.flagManPEnd}}; Manual P end

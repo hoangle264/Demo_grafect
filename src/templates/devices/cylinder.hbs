@@ -1,5 +1,9 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  device_cylinder — Output + error timer for one cylinder ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 {{#if hasOutput}}
 ;{{{label}}}
+{{!-- ─── DirA output: Auto (step active & not-cmp) OR Manual sysManFlag ── --}}
 {{#if hasDirAOutput}}
 LD   {{pad unit.flagAuto}}; Auto
 AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
@@ -16,6 +20,7 @@ CON
 RES  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
+{{!-- ─── DirB output: Auto (step active & not-cmp, ORL for multi-step) ──── --}}
 {{#if hasDirBOutput}}
 LD   {{pad unit.flagAuto}}; Auto
 {{#if singleStepDirB}}
@@ -43,6 +48,7 @@ CON
 {{/if}}
 SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
+{{!-- ─── Error timers: ONDL if output ON but feedback sensor not reached ─── --}}
 {{#if errTimerDirA}}
 LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}

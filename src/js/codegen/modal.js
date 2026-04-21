@@ -44,12 +44,6 @@ function showGenerateCodeModal() {
             style="background:var(--bg);border:1px solid var(--border);color:var(--cyan);
             font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;
             border-radius:3px;outline:none;">
-            <option value="kv-5500">🔵 Keyence KV-5500 / 5000 / 3000</option>
-            <option value="kv-8000">🔵 Keyence KV-8000 / 7500</option>
-            <option value="melsec">🟠 Mitsubishi MELSEC iQ-R / F / L</option>
-            <option value="omron">🟢 Omron CJ / CS / NJ / NX</option>
-            <option value="siemens">🟡 Siemens S7-1200 / 1500 (AWL)</option>
-            <option value="st">⬜ IEC 61131-3 ST [demo]</option>
             <option value="unit-config">🟣 Unit Config JSON</option>
             <option value="runtime-plan">🟤 Runtime Plan [debug]</option>
           </select>
@@ -71,8 +65,17 @@ function showGenerateCodeModal() {
         <div id="cg-uc-panel" style="display:none;flex-direction:column;gap:6px;">
           <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:3px;">
             UNIT CONFIG JSON
-          </div>
+          </div>          <!-- Address Mode -->
           <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:9px;color:var(--text3);width:110px;">Address Mode:</label>
+            <select id="uc-addr-mode" onchange="cgUpdatePreview()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--cyan);
+              font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 6px;
+              border-radius:3px;outline:none;">
+              <option value="linear">Linear — MR100, MR102, MR104…</option>
+              <option value="block">Block — MR100…MR115, MR200…MR215…</option>
+            </select>
+          </div>          <div style="display:flex;align-items:center;gap:8px;">
             <label style="font-size:9px;color:var(--text3);width:110px;">Unit Config: <span style="color:var(--cyan)">*</span></label>
             <input type="file" id="uc-unit-file" accept=".json"
               style="font-size:10px;color:var(--cyan);background:var(--bg);
@@ -385,9 +388,11 @@ function cgUpdatePreview() {
     }
     const profile        = PLC_PROFILES['kv-5500'];
     const selectedUnitId = cgUCGetSelectedUnitId();
+    const addrMode       = document.getElementById('uc-addr-mode')?.value || 'linear';
     try {
       const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
-        strictTemplates: true
+        strictTemplates: true,
+        addressMode: addrMode
       });
       pre.textContent = result.code;
       if (stat) stat.textContent = result.stats;
@@ -532,8 +537,10 @@ function cgDownloadCode() {
     if (!cgUCEnsureTemplateHealth('download code')) return;
     const profile        = PLC_PROFILES['kv-5500'];
     const selectedUnitId = cgUCGetSelectedUnitId();
+    const addrMode       = document.getElementById('uc-addr-mode')?.value || 'linear';
     const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
-      strictTemplates: true
+      strictTemplates: true,
+      addressMode: addrMode
     });
     const label   = (UC_UNIT_CONFIG.unit?.label || 'unit').replace(/\s+/g, '_');
     const blob = new Blob([result.code], { type: 'text/plain;charset=utf-8' });

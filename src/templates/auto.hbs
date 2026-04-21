@@ -1,4 +1,8 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  AUTO — Grafcet auto sequence section                    ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;<h1/>Auto
+{{!-- ─── Auto flag: start trigger (button / HMI) ─────────────────────── --}}
 {{#if unit.btnStart}}
 LDP  {{pad unit.btnStart}}; btnStart
 {{/if}}
@@ -15,6 +19,7 @@ ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
 ANB  {{pad unit.hmiStop}}; Hmi infeed _stop
 {{/if}}
 OUT  {{pad unit.flagAuto}}; Auto
+{{!-- ─── Auto trigger address (optional) ────────────────────────────── --}}
 {{#if unit.autoTriggerAddr}}
 LD   {{pad unit.flagHomed}}; Homed
 AND  {{pad unit.flagAuto}}; Auto
@@ -22,10 +27,13 @@ ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagError}}; Error
 SET  {{pad unit.autoTriggerAddr}}
 {{/if}}
+{{!-- ─── Station flows ──────────────────────────────────────────────── --}}
 {{#each stationFlows}}
 ;<h1/>{{{label}}}
+{{!-- ── Steps loop ──────────────────────────────────────────────────── --}}
 {{#each steps}}
 ;{{{actionLabel}}}
+{{!-- activate: first step → Auto+Homed; next steps → prevCmpAddr --}}
 {{#if isFirst}}
 LD   {{pad ../../unit.flagAuto}}; Auto
 AND  {{pad ../../unit.flagHomed}}; Homed
@@ -39,8 +47,10 @@ ANB  {{pad ../../unit.flagError}}; Error
 {{/if}}
 SET  {{pad addr}}; {{{actionLabel}}}
 {{/if}}
+{{!-- completion → see step_body partial --}}
 {{> step_body}}
 {{/each}}
+{{!-- ── End of cycle: end pulse + ZRES ─────────────────────────────── --}}
 LD   {{pad lastStep.cmpAddr}}; {{{lastStep.actionLabel}}} Cmp
 DIFU {{pad endPulseAddr}}; Sequence 1 End
 LD   {{pad endPulseAddr}}; Sequence 1 End

@@ -1,4 +1,8 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  ORIGIN — Home return sequence section                   ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;<h1/>Origin
+{{!-- ─── Origin flag: start trigger (button / HMI) ───────────────────── --}}
 {{#if unit.btnStart}}
 LDP  {{pad unit.btnStart}}; btnStart
 {{/if}}
@@ -16,9 +20,11 @@ ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
 ANB  {{pad unit.hmiStop}}; Hmi {{{unit.label}}} _stop
 {{/if}}
 OUT  {{pad unit.flagOrigin}}; Origin
+{{!-- ─── Origin steps loop ──────────────────────────────────────────── --}}
 {{#if hasOriginSteps}}
 {{#each originSteps}}
 ;{{{actionLabel}}}
+{{!-- activate: first step → Origin flag; next steps → prevCmpAddr --}}
 {{#if isFirst}}
 LD   {{pad ../unit.flagOrigin}}; Origin
 ANB  {{pad ../unit.flagHomed}}; Homed
@@ -31,8 +37,10 @@ ANB  {{pad ../unit.flagError}}; Error
 {{{extraCondition}}}
 {{/if}}
 SET  {{pad addr}}; {{{actionLabel}}}
+{{!-- completion → see step_body partial --}}
 {{> step_body}}
 {{/each}}
+{{!-- ─── Homed flag: set when last origin step completes ─────────────── --}}
 LD   {{pad lastOriginStep.cmpAddr}}; {{{lastOriginStep.actionLabel}}} Cmp
 SET  {{pad unit.flagHomed}}; Homed
 LD   {{pad unit.flagHomed}}; Homed

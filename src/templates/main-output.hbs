@@ -1,4 +1,8 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  MAIN OUTPUT — dispatcher for each device kind           ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;<h1>OUTPUT SECTION (AUTO/MANUAL)
+{{!-- ─── Route each device to its partial based on kind ──────────────── --}}
 {{#each devices}}
 {{#if (eq kind "cylinder")}}
 {{> device_cylinder unit=unit }}

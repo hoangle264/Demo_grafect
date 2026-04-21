@@ -308,6 +308,20 @@ function ucParseBase(baseStr) {
 function ucMRAddr(baseNum, offset) {
   return '@MR' + String(baseNum + offset).padStart(3, '0');
 }
+// ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
+// VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
+function ucMRAddrBlock(baseNum, stepIndex) {
+  const blockIndex  = Math.floor(stepIndex / 8);
+  const posInBlock  = stepIndex % 8;
+  const num = baseNum + blockIndex * 100 + posInBlock * 2;
+  return '@MR' + String(num).padStart(3, '0');
+}
+function ucMRAddrBlockCmp(baseNum, stepIndex) {
+  const blockIndex  = Math.floor(stepIndex / 8);
+  const posInBlock  = stepIndex % 8;
+  const num = baseNum + blockIndex * 100 + posInBlock * 2 + 1;
+  return '@MR' + String(num).padStart(3, '0');
+}
 
 // ─── Lấy tên hướng từ sigName (VD: 'Up_SOL' → 'Up', 'CoilA' → 'CoilA') ─────
 function ucDirFromSigName(sigName) {
@@ -358,8 +372,9 @@ function ucFindFirstSignalAddress(signalMap, candidates) {
 //  - devices[] chuẩn hóa qua ucNormalizeDeviceList (tương thích v2 cylinders[]).
 //  - Admin addresses (hmiManBtn, lock, err…) tính qua ucResolveCylinderAdminAddrs.
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
-function cgUCBuildContext(unitConfig, selectedUnitId) {
+function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
+  const addressMode = (options && options.addressMode) || 'linear'; // 'linear' | 'block'
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
   const flags  = ucResolveUnitFlags(u);
@@ -538,8 +553,8 @@ function cgUCBuildContext(unitConfig, selectedUnitId) {
       }
 
       return {
-        addr:           ucMRAddr(baseNum, i * 2),
-        cmpAddr:        ucMRAddr(baseNum, i * 2 + 1),
+        addr:           addressMode === 'block' ? ucMRAddrBlock(baseNum, i)    : ucMRAddr(baseNum, i * 2),
+        cmpAddr:        addressMode === 'block' ? ucMRAddrBlockCmp(baseNum, i) : ucMRAddr(baseNum, i * 2 + 1),
         label:          step.label || ('Step ' + step.number),
         actions:        actions,
         sensor:         sensor,
@@ -817,6 +832,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId) {
     originSteps:  originSteps,
     stationFlows: stationFlows,
     deviceList:   deviceList,
+    addressMode:  addressMode,
     // v3: expose warnings để entry point chèn vào output
     warnings:     ucBuildWarnings({ unit, cylinders, originSteps, stationFlows })
   };
@@ -824,6 +840,19 @@ function cgUCBuildContext(unitConfig, selectedUnitId) {
 
 // ─── p: pad address string for alignment ─────────────────────────────────────
 function ucPad(addr) { return String(addr).padEnd(12); }
+
+// ─── Tính địa chỉ cuối vùng ZRES theo mode ──────────────────────────────────
+// linear: baseNum + max(15, stepCount*2+6)
+// block : cuối block chứa step cuối = baseNum + blockIndex*100 + 15
+function ucResetEndAddr(baseNum, stepCount, addressMode) {
+  if (addressMode === 'block') {
+    const lastBlockIndex = Math.floor((stepCount - 1) / 8);
+    const num = baseNum + lastBlockIndex * 100 + 15;
+    return '@MR' + String(num).padStart(3, '0');
+  }
+  const num = baseNum + Math.max(15, stepCount * 2 + 6);
+  return '@MR' + String(num).padStart(3, '0');
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  SECTION GENERATORS
@@ -1133,10 +1162,9 @@ function cgUCGenerateAuto(ctx) {
     L.push(`LD   ${ucPad(lastStep.cmpAddr)}; ${lastLabel} Cmp`);
     L.push(`DIFU ${ucPad(endPulse)}; Sequence 1 End`);
     L.push(`LD   ${ucPad(endPulse)}; Sequence 1 End`);
-    // ZRES: reset từ step[0].addr đến cuối vùng đệm (16 slot = baseNum+15)
-    const firstAddr   = flow.steps[0].addr;
-    const resetEndNum = flow.baseNum + Math.max(15, flow.steps.length * 2 + 6);
-    const resetEndAddr = '@MR' + String(resetEndNum).padStart(3, '0');
+    // ZRES: reset từ step[0].addr đến cuối vùng đệm
+    const firstAddr    = flow.steps[0].addr;
+    const resetEndAddr = ucResetEndAddr(flow.baseNum, flow.steps.length, ctx.addressMode);
     L.push(`ZRES ${firstAddr} ${resetEndAddr} ; ${lastLabel} Cmp`);
   });
 
@@ -1469,8 +1497,7 @@ function cgUCBuildTemplateContext(ctx) {
       });
     });
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
-    const resetEndNum  = flow.baseNum + Math.max(15, flow.steps.length * 2 + 6);
-    const resetEndAddr = '@MR' + String(resetEndNum).padStart(3, '0');
+    const resetEndAddr = ucResetEndAddr(flow.baseNum, flow.steps.length, ctx.addressMode);
     return Object.assign({}, flow, {
       steps:        steps,
       lastStep:     lastStep,
@@ -1540,13 +1567,14 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
     return { code: '; ERROR: unitConfig chưa được load.', stats: 'Error' };
   }
   const strictTemplates = !!(options && options.strictTemplates);
+  const addressMode     = (options && options.addressMode) || 'linear';
 
   // v3: kiểm tra schema version để hiển thị đúng trong header
   const schemaVer = unitConfig.unit?.overrides != null
     ? 'v3'
     : (unitConfig.devices != null ? 'v3' : 'v2');
 
-  const ctx = cgUCBuildContext(unitConfig, selectedUnitId);
+  const ctx = cgUCBuildContext(unitConfig, selectedUnitId, { addressMode });
   const pr  = profile || PLC_PROFILES['kv-5500'];
   const timestamp = new Date().toLocaleString('vi-VN');
   const unitLabel = (ctx.unit.label || '').padEnd(39);
