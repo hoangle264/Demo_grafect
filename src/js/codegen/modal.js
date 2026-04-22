@@ -35,7 +35,7 @@ function showGenerateCodeModal() {
 
       <!-- Options row -->
       <div style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;
-        gap:20px;align-items:flex-end;flex-wrap:wrap;flex-shrink:0;background:var(--s2);">
+        gap:20px;align-items:center;flex-wrap:wrap;flex-shrink:0;background:var(--s2);">
 
         <!-- Target PLC -->
         <div>
@@ -61,56 +61,6 @@ function showGenerateCodeModal() {
             oninput="cgUpdatePreview()">
         </div>
 
-        <!-- Unit Config JSON file pickers (chỉ hiện khi target = unit-config) -->
-        <div id="cg-uc-panel" style="display:none;flex-direction:column;gap:6px;">
-          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:3px;">
-            UNIT CONFIG JSON
-          </div>          <!-- Address Mode -->
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:9px;color:var(--text3);width:110px;">Address Mode:</label>
-            <select id="uc-addr-mode" onchange="cgUpdatePreview()"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--cyan);
-              font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 6px;
-              border-radius:3px;outline:none;">
-              <option value="linear">Linear — MR100, MR102, MR104…</option>
-              <option value="block">Block — MR100…MR115, MR200…MR215…</option>
-            </select>
-          </div>          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:9px;color:var(--text3);width:110px;">Unit Config: <span style="color:var(--cyan)">*</span></label>
-            <input type="file" id="uc-unit-file" accept=".json"
-              style="font-size:10px;color:var(--cyan);background:var(--bg);
-              border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
-              onchange="cgUCLoadFile('uc-unit-file', function(d){ UC_UNIT_CONFIG=d; cgUCUpdateStatus(); cgUCBuildUnitSelector(); cgUpdatePreview(); })">
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:9px;color:var(--text3);width:110px;">Cylinder Types: <span style="font-size:8px;">(optional)</span></label>
-            <input type="file" id="uc-cyl-file" accept=".json"
-              style="font-size:10px;color:var(--cyan);background:var(--bg);
-              border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
-              onchange="cgUCLoadFile('uc-cyl-file', function(d){ UC_CYLINDER_TYPES=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:9px;color:var(--text3);width:110px;">Device Library: <span style="font-size:8px;">(optional)</span></label>
-            <input type="file" id="uc-devlib-file" accept=".json"
-              style="font-size:10px;color:var(--cyan);background:var(--bg);
-              border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
-              onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:9px;color:var(--text3);width:110px;">Runtime Metadata: <span style="font-size:8px;">(optional)</span></label>
-            <input type="file" id="uc-runtime-meta-file" accept=".json"
-              style="font-size:10px;color:var(--cyan);background:var(--bg);
-              border:1px solid var(--border);border-radius:3px;padding:2px 6px;"
-              onchange="cgUCLoadFile('uc-runtime-meta-file', function(d){ UC_RUNTIME_DEVICE_META=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
-          </div>
-          <!-- Unit selector từ project canvas -->
-          <div id="uc-unit-selector" style="display:none;margin-top:4px;">
-            <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">CHỌN UNIT TRONG PROJECT</div>
-            <div id="uc-unit-radio-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
-          </div>
-          <div id="uc-status" style="font-size:9px;color:var(--text3);margin-top:2px;"></div>
-        </div>
-
         <!-- Unit + Diagram selector (ẩn khi dùng unit-config) -->
         <div id="cg-unit-wrap" style="flex:1;min-width:220px;">
           <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:5px;">UNIT</div>
@@ -127,6 +77,66 @@ function showGenerateCodeModal() {
             </div>
             <div id="cg-diag-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Unit Config JSON Files (collapsible, hiện khi usesUC) -->
+      <div id="cg-uc-files-bar" style="display:none;border-top:1px solid var(--border);background:var(--s2);flex-shrink:0;">
+        <div style="padding:6px 20px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;"
+          onclick="cgToggleUCFiles()">
+          <span style="font-size:9px;letter-spacing:1px;color:var(--text3);">📁 JSON FILES</span>
+          <span id="uc-files-chevron" style="font-size:9px;color:var(--text3);">▶</span>
+          <span id="uc-files-summary" style="font-size:9px;color:var(--text3);margin-left:4px;"></span>
+          <span style="flex:1;"></span>
+          <label style="font-size:9px;color:var(--text3);display:flex;align-items:center;gap:4px;"
+            onclick="event.stopPropagation()">
+            Address Mode:
+            <select id="uc-addr-mode" onchange="cgUpdatePreview()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--cyan);
+              font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 6px;
+              border-radius:3px;outline:none;">
+              <option value="linear">Linear — MR100, MR102, MR104…</option>
+              <option value="block">Block — MR100…MR115, MR200…MR215…</option>
+            </select>
+          </label>
+        </div>
+        <div id="cg-uc-files-body" style="display:none;padding:8px 20px 10px 20px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:9px;color:var(--text3);width:110px;flex-shrink:0;">Unit Config: <span style="color:var(--cyan)">*</span></label>
+              <input type="file" id="uc-unit-file" accept=".json"
+                style="font-size:10px;color:var(--cyan);background:var(--bg);
+                border:1px solid var(--border);border-radius:3px;padding:2px 6px;flex:1;min-width:0;"
+                onchange="cgUCLoadFile('uc-unit-file', function(d){ UC_UNIT_CONFIG=d; cgUCUpdateStatus(); cgUCBuildUnitSelector(); cgUpdatePreview(); })">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:9px;color:var(--text3);width:110px;flex-shrink:0;">Cylinder Types: <span style="font-size:8px;">(optional)</span></label>
+              <input type="file" id="uc-cyl-file" accept=".json"
+                style="font-size:10px;color:var(--cyan);background:var(--bg);
+                border:1px solid var(--border);border-radius:3px;padding:2px 6px;flex:1;min-width:0;"
+                onchange="cgUCLoadFile('uc-cyl-file', function(d){ UC_CYLINDER_TYPES=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:9px;color:var(--text3);width:110px;flex-shrink:0;">Device Library: <span style="font-size:8px;">(optional)</span></label>
+              <input type="file" id="uc-devlib-file" accept=".json"
+                style="font-size:10px;color:var(--cyan);background:var(--bg);
+                border:1px solid var(--border);border-radius:3px;padding:2px 6px;flex:1;min-width:0;"
+                onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="font-size:9px;color:var(--text3);width:110px;flex-shrink:0;">Runtime Metadata: <span style="font-size:8px;">(optional)</span></label>
+              <input type="file" id="uc-runtime-meta-file" accept=".json"
+                style="font-size:10px;color:var(--cyan);background:var(--bg);
+                border:1px solid var(--border);border-radius:3px;padding:2px 6px;flex:1;min-width:0;"
+                onchange="cgUCLoadFile('uc-runtime-meta-file', function(d){ UC_RUNTIME_DEVICE_META=d; cgUCUpdateStatus(); cgUpdatePreview(); })">
+            </div>
+          </div>
+          <!-- Unit selector từ project canvas -->
+          <div id="uc-unit-selector" style="display:none;margin-top:8px;">
+            <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">CHỌN UNIT TRONG PROJECT</div>
+            <div id="uc-unit-radio-list" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+          </div>
+          <div id="uc-status" style="font-size:9px;color:var(--text3);margin-top:6px;"></div>
         </div>
       </div>
 
@@ -364,10 +374,20 @@ function cgUpdatePreview() {
 
   // Show/hide panels
   const baseMRWrap  = document.getElementById('cg-base-mr-wrap');
-  const ucPanel     = document.getElementById('cg-uc-panel');
+  const ucFilesBar  = document.getElementById('cg-uc-files-bar');
   const unitWrap    = document.getElementById('cg-unit-wrap');
   if (baseMRWrap) baseMRWrap.style.display = isUC ? 'none' : '';
-  if (ucPanel)    ucPanel.style.display    = usesUC ? 'flex' : 'none';
+  if (ucFilesBar) {
+    const wasHidden = ucFilesBar.style.display === 'none';
+    ucFilesBar.style.display = usesUC ? '' : 'none';
+    // Auto-mở khi lần đầu hiện và chưa có file nào được load
+    if (wasHidden && usesUC && !UC_UNIT_CONFIG) {
+      const body    = document.getElementById('cg-uc-files-body');
+      const chevron = document.getElementById('uc-files-chevron');
+      if (body)    body.style.display    = '';
+      if (chevron) chevron.textContent   = '▼';
+    }
+  }
   if (unitWrap)   unitWrap.style.display   = isUC ? 'none' : '';
 
   const pre  = document.getElementById('cg-preview');
@@ -522,6 +542,22 @@ function cgUCUpdateStatus() {
   }
   el.textContent = parts.length ? parts.join('  |  ') : 'Load Unit Config JSON để bắt đầu';
   el.style.color = UC_UNIT_CONFIG ? 'var(--cyan)' : 'var(--text3)';
+
+  // Cập nhật summary trên header của collapsible bar
+  const summary = document.getElementById('uc-files-summary');
+  if (summary) {
+    if (UC_UNIT_CONFIG) {
+      const label = UC_UNIT_CONFIG.unit?.label || 'loaded';
+      const extras = [UC_CYLINDER_TYPES ? 'Cyl' : null,
+                      Object.keys(DEVICE_LIBRARY || {}).filter(k => !k.startsWith('_')).length ? 'DevLib' : null,
+                      UC_RUNTIME_DEVICE_META ? 'Meta' : null].filter(Boolean);
+      summary.textContent = '✓ ' + label + (extras.length ? '  +' + extras.join(', ') : '');
+      summary.style.color = 'var(--cyan)';
+    } else {
+      summary.textContent = 'Chưa load file';
+      summary.style.color = 'var(--text3)';
+    }
+  }
 }
 
 // ─── Download / Copy ──────────────────────────────────────────────────────────
@@ -604,6 +640,16 @@ function cgCopyCode() {
   const pre = document.getElementById('cg-preview');
   if (!pre) return;
   navigator.clipboard.writeText(pre.textContent).then(() => toast('✓ Copied to clipboard'));
+}
+
+// ─── JSON Files panel toggle ─────────────────────────────────────────────────
+function cgToggleUCFiles() {
+  const body    = document.getElementById('cg-uc-files-body');
+  const chevron = document.getElementById('uc-files-chevron');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display    = open ? 'none' : '';
+  if (chevron) chevron.textContent = open ? '▶' : '▼';
 }
 
 // ─── Template Manager toggle ──────────────────────────────────────────────────
