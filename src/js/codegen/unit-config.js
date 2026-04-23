@@ -430,11 +430,18 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   }
 
   // ── Build computed steps cho một flow sequence ────────────────────────────
-  // Trả về mảng step objects với addr, cmpAddr, label, actions[], sensor
+  // Trả về mảng step objects với addr, cmpAddr, label, actions[], sensor,
+  // prevCmpAddr, prevActionLabel (resolved via inTrans — not positional).
   function buildComputedSteps(seqData, baseNum) {
     if (!seqData) return [];
-    const { sequence, vars } = seqData;
-    return sequence.map(function(item, i) {
+    const { sequence, vars, s } = seqData;
+    // Graph data needed for predecessor lookup via inTrans
+    const seqConnections = (s && s.connections) || [];
+    const seqSteps       = (s && s.steps)       || [];
+    const seqParallels   = (s && s.parallels)   || [];
+
+    // ── Pass 1: compute per-step properties (addr, cmpAddr, actions, sensor…)
+    const items = sequence.map(function(item, i) {
       const { step, inTrans, outTrans } = item;
 
       // Actions: lọc qualifier='N' (SET-action)
@@ -561,8 +568,41 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         sensorLabel:    sensorLabel,
         extraCondition: extraCondition,
         stepIndex:      i,
-        stepId:         step.id
+        stepId:         step.id,
+        _inTrans:       inTrans   // temporary: consumed in pass 2 for predecessor lookup
       };
+    });
+
+    // ── Pass 2: resolve prevCmpAddr / prevActionLabel via inTrans ─────────
+    // Build a map for O(1) lookup of predecessor computed step by step ID.
+    const itemByStepId = {};
+    items.forEach(function(it) { itemByStepId[it.stepId] = it; });
+
+    return items.map(function(it) {
+      let prevCmpAddr     = '';
+      let prevActionLabel = '';
+      if (it._inTrans && typeof resolveStepsThrough === 'function') {
+        // resolveStepsThrough is a global defined in graph-utils.js, loaded before
+        // this file in the browser.  The typeof guard protects unit tests that
+        // call buildComputedSteps in isolation without the full bundle.
+        // Find the step(s) immediately upstream of this step's incoming transition.
+        // For alternative branching a step has exactly one predecessor; for a
+        // parallel join there could be multiple — we use the first since unit-config
+        // generators produce one sequential activation block per step.
+        const predSteps = resolveStepsThrough(
+          it._inTrans.id, 'upstream', seqConnections, seqSteps, seqParallels
+        );
+        if (predSteps.length > 0) {
+          const predItem = itemByStepId[predSteps[0].id];
+          if (predItem) {
+            prevCmpAddr     = predItem.cmpAddr;
+            prevActionLabel = ucComputeActionLabel(predItem);
+          }
+        }
+      }
+      const result = Object.assign({}, it, { prevCmpAddr: prevCmpAddr, prevActionLabel: prevActionLabel });
+      delete result._inTrans;
+      return result;
     });
   }
 
@@ -1047,11 +1087,11 @@ function cgUCGenerateOrigin(ctx) {
         L.push(`ANB  ${ucPad(u.flagHomed)}; Homed`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
       } else {
-        const prev = originSteps[i - 1];
-        const prevLabel = prev.actions.length
-          ? prev.actions.map(function(a) { return (a.devLabel || '') + ' ' + ucDirFromSigName(a.sigName || ''); }).join(', ')
-          : prev.label;
-        L.push(`LD   ${ucPad(prev.cmpAddr)}; ${prevLabel} Cmp`);
+        // Use the predecessor address stored in step.prevCmpAddr (resolved from
+        // inTrans in buildComputedSteps), not the positional array index.
+        const prevCmpAddr = step.prevCmpAddr || '';
+        const prevLabel   = step.prevActionLabel || step.label;
+        L.push(`LD   ${ucPad(prevCmpAddr)}; ${prevLabel} Cmp`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
       }
 
@@ -1135,11 +1175,11 @@ function cgUCGenerateAuto(ctx) {
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
         L.push(`SET  ${ucPad(step.addr)}; ${actionLabel || step.label}`);
       } else {
-        const prev = flow.steps[i - 1];
-        const prevLabel = prev.actions.length
-          ? prev.actions.map(function(a) { return (a.devLabel || '') + ' ' + ucDirFromSigName(a.sigName || ''); }).join(', ')
-          : prev.label;
-        L.push(`LD   ${ucPad(prev.cmpAddr)}; ${prevLabel} Cmp`);
+        // Use the predecessor address stored in step.prevCmpAddr (resolved from
+        // inTrans in buildComputedSteps), not the positional array index.
+        const prevCmpAddr = step.prevCmpAddr || '';
+        const prevLabel   = step.prevActionLabel || step.label;
+        L.push(`LD   ${ucPad(prevCmpAddr)}; ${prevLabel} Cmp`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
         if (step.extraCondition && step.extraCondition.trim()) {
           L.push(step.extraCondition.trim());
@@ -1479,8 +1519,10 @@ function cgUCBuildTemplateContext(ctx) {
     return Object.assign({}, step, {
       actionLabel:     ucComputeActionLabel(step),
       isFirst:         i === 0,
-      prevCmpAddr:     i > 0 ? ctx.originSteps[i - 1].cmpAddr : '',
-      prevActionLabel: i > 0 ? ucComputeActionLabel(ctx.originSteps[i - 1]) : '',
+      // prevCmpAddr and prevActionLabel are already resolved via inTrans in
+      // buildComputedSteps — use them directly instead of positional lookup.
+      prevCmpAddr:     step.prevCmpAddr     || '',
+      prevActionLabel: step.prevActionLabel || '',
     });
   });
   const lastOriginStep = originSteps.length > 0
@@ -1492,8 +1534,10 @@ function cgUCBuildTemplateContext(ctx) {
       return Object.assign({}, step, {
         actionLabel:     ucComputeActionLabel(step),
         isFirst:         i === 0,
-        prevCmpAddr:     i > 0 ? flow.steps[i - 1].cmpAddr : '',
-        prevActionLabel: i > 0 ? ucComputeActionLabel(flow.steps[i - 1]) : '',
+        // prevCmpAddr and prevActionLabel are already resolved via inTrans in
+        // buildComputedSteps — use them directly instead of positional lookup.
+        prevCmpAddr:     step.prevCmpAddr     || '',
+        prevActionLabel: step.prevActionLabel || '',
       });
     });
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;

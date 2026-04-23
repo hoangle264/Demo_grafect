@@ -24,6 +24,14 @@ function cgResolveSequence(s) {
     return transitions.find(t => t.id === conn.to) || null;
   }
 
+  // Returns ALL outgoing transitions from a step (supports alternative branching).
+  function getDownstreamTransitions(stepId) {
+    return connections
+      .filter(c => c.from === stepId)
+      .map(c => transitions.find(t => t.id === c.to))
+      .filter(Boolean);
+  }
+
   function getUpstreamTransition(stepId) {
     const conn = connections.find(c => c.to === stepId);
     if (!conn) return null;
@@ -38,20 +46,29 @@ function cgResolveSequence(s) {
     if (visited.has(step.id)) return;
     visited.add(step.id);
 
-    const outTrans = getDownstreamTransition(step.id);
-    result.push({ step, inTrans: inTrans || null, outTrans: outTrans || null });
+    // Collect all outgoing transitions so every branch is traversed.
+    const outTransList = getDownstreamTransitions(step.id);
+    // Keep the first outgoing transition as `outTrans` for backward-compatible
+    // generators that use it as the single step-completion condition.
+    const outTrans = outTransList[0] || null;
+    result.push({ step, inTrans: inTrans || null, outTrans });
 
-    if (!outTrans) return;
-
-    const nextSteps = getDownstreamSteps(outTrans.id);
-    nextSteps.forEach(ns => walk(ns, outTrans));
+    // Walk every branch — this marks all reachable steps as visited so that
+    // the "disconnected steps" fallback below is never triggered for steps
+    // that merely belong to an alternative branch.
+    outTransList.forEach(t => {
+      const nextSteps = getDownstreamSteps(t.id);
+      nextSteps.forEach(ns => walk(ns, t));
+    });
   }
 
   // Get incoming transition for initial step (if any — usually none)
   const initInTrans = getUpstreamTransition(initialStep.id);
   walk(initialStep, initInTrans);
 
-  // Catch any disconnected steps (not reachable from initial)
+  // Catch any truly disconnected steps (not reachable from initial via any branch).
+  // With the fixed walk this should only trigger for steps that have no connection
+  // to the main flow at all, not for steps that are part of an alternative branch.
   steps
     .slice()
     .sort((a,b) => a.number - b.number)
