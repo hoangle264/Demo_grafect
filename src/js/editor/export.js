@@ -180,7 +180,8 @@ function exportHTML() {
   const data=loadDiagramData(activeDiagramId);
   if(!data){return;}
   const s2=data.state, n2=data.nextId||1, ns2=data.nextStepNum||0;
-  const all=[...s2.steps.map(s=>({x:s.x,y:s.y,w:SW,h:SH})),...s2.transitions.map(t=>({x:t.x,y:t.y,w:TW,h:TH})),...(s2.parallels||[]).map(p=>({x:p.x,y:p.y,w:p.width,h:PH*2+4}))];
+  const lineH=15,actPad=6;
+  const all=[...s2.steps.map(s=>{const al=getStepActionsStatic(s);const aH=al.length?Math.max(SH,al.length*lineH+actPad*2):SH;return{x:s.x,y:s.y,w:al.length?SW+ACT_W:SW,h:aH};}),...s2.transitions.map(t=>({x:t.x,y:t.y-10,w:TW,h:TH+20})),...(s2.parallels||[]).map(p=>({x:p.x,y:p.y,w:p.width,h:PH*2+4}))];
   let vb='0 0 800 600';
   if(all.length){const minX=Math.min(...all.map(a=>a.x))-40,minY=Math.min(...all.map(a=>a.y))-40,maxX=Math.max(...all.map(a=>a.x+a.w))+80,maxY=Math.max(...all.map(a=>a.y+a.h))+60;vb=`${minX} ${minY} ${maxX-minX} ${maxY-minY}`;}
   const svgContent=buildExportSVGContent(s2);
