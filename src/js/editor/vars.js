@@ -168,9 +168,105 @@ function renderVarTable() {
       }
     });
   }
+  // ── Section: project.excelVars (read-only, từ Excel import) ─────────────
+  const excelVars = (project.excelVars||[]).filter(v=>
+    !filter ||
+    (v.label||'').toLowerCase().includes(filter) ||
+    (v.format||'').toLowerCase().includes(filter)
+  );
+  if(excelVars.length > 0){
+    // Separator row
+    const sepTr = document.createElement('tr');
+    sepTr.innerHTML = `<td colspan="5" style="padding:4px 8px;font-size:9px;
+      letter-spacing:1px;color:var(--text3);background:var(--s2);
+      border-top:1px solid var(--border);user-select:none;">
+      📊 PROJECT EXCEL VARS <span style="color:var(--cyan);margin-left:4px;">${excelVars.length} device${excelVars.length!==1?'s':''}</span>
+      <span style="opacity:.5;margin-left:6px;">— read-only · xóa qua nút 📥 Excel</span>
+    </td>`;
+    tbody.appendChild(sepTr);
+
+    excelVars.forEach(v => {
+      const devType = (project.devices||[]).find(d=>d.name===(v.format||''));
+      const isExpanded = v._sigExpanded !== false;
+
+      const tr = document.createElement('tr');
+      tr.classList.add('vt-dev-instance');
+      tr.style.opacity = '0.85';
+
+      // Row number (no click select)
+      const tdN = document.createElement('td');
+      tdN.className = 'vt-rownum';
+      tdN.style.color = 'var(--cyan)';
+      tdN.textContent = '⚡';
+      tr.appendChild(tdN);
+
+      // Label — read-only
+      const tdL = document.createElement('td');
+      tdL.innerHTML = `<span class="vt-cell lbl" style="opacity:.9;">${esc2(v.label||'')}</span>`;
+      tr.appendChild(tdL);
+
+      // Format — read-only
+      const tdF = document.createElement('td');
+      tdF.innerHTML = `<span class="vt-cell" style="font-size:9px;color:var(--cyan);padding:0 8px;">${esc2(v.format||'')}</span>`;
+      tr.appendChild(tdF);
+
+      // Expand toggle / signal count
+      const tdA = document.createElement('td');
+      tdA.style.cssText = 'padding:0 8px;font-size:9px;color:var(--cyan);cursor:pointer;user-select:none;';
+      tdA.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;">
+        <span style="font-size:10px;">${isExpanded?'▾':'▸'}</span>
+        <span style="opacity:.7;">${(devType&&devType.signals||[]).length} signals</span>
+      </span>`;
+      tdA.addEventListener('click', ()=>{
+        v._sigExpanded = !isExpanded;
+        saveProject();
+        renderVarTable();
+      });
+      tr.appendChild(tdA);
+
+      // Comment
+      const tdC = document.createElement('td');
+      tdC.innerHTML = `<span class="vt-sig-cmt" style="opacity:.6;">${esc2(v.comment||'Excel import')}</span>`;
+      tr.appendChild(tdC);
+
+      tbody.appendChild(tr);
+
+      // Signal sub-rows (read-only địa chỉ)
+      if(devType && isExpanded){
+        const sAddr = v.signalAddresses||{};
+        (devType.signals||[]).forEach(sig=>{
+          const addr = sAddr[sig.id]||'';
+          if(!addr) return; // ẩn signal chưa có địa chỉ
+          const subTr = document.createElement('tr');
+          subTr.className = 'vt-dev-signal-row';
+          subTr.style.opacity = '0.8';
+
+          const vc={Input:'vt-input',Output:'vt-output',Var:'vt-var'}[sig.varType]||'vt-var';
+          const vs={Input:'IN',Output:'OUT',Var:'VAR'}[sig.varType]||'VAR';
+          const tc={Bool:'sig-bool',Int:'sig-int',Real:'sig-real',Word:'sig-word'}[sig.dataType]||'sig-bool';
+
+          subTr.innerHTML = `
+            <td style="padding:0;"><div class="vt-sig-num"></div></td>
+            <td><div class="vt-sig-label">
+              <span class="vt-sig-indent">└</span>
+              <span class="vt-sig-name">${esc2(v.label||'?')}.${esc2(sig.name)}</span>
+              <span class="sdcol-type ${tc}" style="margin-left:5px;">${esc2(sig.dataType)}</span>
+              <span class="sdcol-io ${vc}" style="margin-left:3px;">${vs}</span>
+            </div></td>
+            <td><span style="font-size:9px;color:var(--text3);padding:0 8px;">${esc2(devType.name)}</span></td>
+            <td><span class="vt-cell addr" style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;color:var(--cyan);">${esc2(addr)}</span></td>
+            <td><span class="vt-sig-cmt">${esc2(sig.comment||'')}</span></td>`;
+          tbody.appendChild(subTr);
+        });
+      }
+    });
+  }
+
   // Update count
   const cnt = document.querySelector('.vt-count');
-  if(cnt) cnt.textContent = vars.length+' var'+(vars.length!==1?'s':'')+(filter?' ('+filtered.length+' shown)':'');
+  if(cnt) cnt.textContent = vars.length+' var'+(vars.length!==1?'s':'')
+    +(excelVars.length?' + '+excelVars.length+' excel':'')
+    +(filter?' (filtered)':'');
 }
 
 function vtEditCell(idx, field, val, cls, type, ph) {
