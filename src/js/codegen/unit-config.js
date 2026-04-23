@@ -98,6 +98,56 @@ const UC_LOCK_BASE    = 1200;  // MR1200/1201 CY1, MR1202/1203 CY2, …
 const UC_ERR_BASE     = 1600;  // MR1600/1601 CY1, MR1602/1603 CY2, …
 const UC_ERR_TIMEOUT  = 500;   // ms mặc định cho ONDL timer
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  EXCEL-DRIVEN DEVICE TYPE — ucEnsureCylinderDeviceType()
+//  Đảm bảo project.devices có device type "Cylinder" chuẩn 12-signal.
+//  Gọi khi import Excel hoặc khi build context.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Định nghĩa chuẩn 12-signal cho Cylinder device type (v1.0). */
+const UC_CYLINDER_DEVICE_DEF = {
+  name: 'Cylinder',
+  signals: [
+    { id: 'cyl_coilA',   name: 'CoilA',    dataType: 'Bool', varType: 'Output', comment: 'Output coil A (extend)' },
+    { id: 'cyl_coilB',   name: 'CoilB',    dataType: 'Bool', varType: 'Output', comment: 'Output coil B (retract)' },
+    { id: 'cyl_lsh',     name: 'LSH',      dataType: 'Bool', varType: 'Input',  comment: 'Limit switch high (extended)' },
+    { id: 'cyl_lsl',     name: 'LSL',      dataType: 'Bool', varType: 'Input',  comment: 'Limit switch low (retracted)' },
+    { id: 'cyl_lockA',   name: 'LockA',    dataType: 'Bool', varType: 'Var',    comment: 'Interlock coil A' },
+    { id: 'cyl_lockB',   name: 'LockB',    dataType: 'Bool', varType: 'Var',    comment: 'Interlock coil B' },
+    { id: 'cyl_disSnsH', name: 'DisSnsH',  dataType: 'Bool', varType: 'Var',    comment: 'Disable sensor LSH (bypass)' },
+    { id: 'cyl_disSnsL', name: 'DisSnsL',  dataType: 'Bool', varType: 'Var',    comment: 'Disable sensor LSL (bypass)' },
+    { id: 'cyl_errA',    name: 'ErrorA',   dataType: 'Bool', varType: 'Var',    comment: 'Error flag coil A direction' },
+    { id: 'cyl_errB',    name: 'ErrorB',   dataType: 'Bool', varType: 'Var',    comment: 'Error flag coil B direction' },
+    { id: 'cyl_state',   name: 'State',    dataType: 'Bool', varType: 'Var',    comment: 'Cylinder state (extended=1)' },
+    { id: 'cyl_hmiMan',  name: 'HmiManBtn',dataType: 'Bool', varType: 'Var',    comment: 'HMI manual button' },
+  ]
+};
+
+/**
+ * Đảm bảo project.devices có device type "Cylinder" chuẩn 12-signal.
+ * Nếu chưa có → thêm. Nếu đã có nhưng thiếu signal → bổ sung.
+ * Trả về device type object.
+ */
+function ucEnsureCylinderDeviceType() {
+  if (typeof project === 'undefined') return UC_CYLINDER_DEVICE_DEF;
+  if (!project.devices) project.devices = [];
+  let dt = project.devices.find(function(d) { return d.name === 'Cylinder'; });
+  if (!dt) {
+    dt = Object.assign({ id: 'devtype-cylinder' }, UC_CYLINDER_DEVICE_DEF);
+    project.devices.push(dt);
+    if (typeof saveProject === 'function') saveProject();
+  } else {
+    // Bổ sung signal còn thiếu (backward compat nếu đã có Cylinder cũ)
+    if (!dt.signals) dt.signals = [];
+    UC_CYLINDER_DEVICE_DEF.signals.forEach(function(defSig) {
+      if (!dt.signals.find(function(s) { return s.id === defSig.id; })) {
+        dt.signals.push(Object.assign({}, defSig));
+      }
+    });
+  }
+  return dt;
+}
+
 // ─── Helper: tạo địa chỉ MR dạng @MRxxx ─────────────────────────────────────
 function ucMkMR(num) {
   return '@MR' + String(num).padStart(3, '0');
@@ -173,27 +223,32 @@ function ucResolveUnitIO(unitCfg) {
 }
 
 /**
- * ucResolveCylinderAdminAddrs(cylDef, unitCfg)
- * Tính hmiManBtn, sysManFlag, lockDirA/B, errFlagDirA/B cho một cylinder.
- * Ưu tiên: giá trị có sẵn trong cylDef (v2 compat) > tự tính theo index.
+ * ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals)
+ * Tính hmiManBtn, sysManFlag, lockDirA/B, errFlagDirA/B, disSnsA/B cho một cylinder.
+ * Ưu tiên: varTable signals (từ Excel) > cylDef props (v2 compat) > tự tính theo index.
  *
  * deviceIndex lấy từ cylDef.index (v3) hoặc vị trí trong mảng (v2).
  * Caller phải truyền index nếu dùng v2.
  *
- * @param {Object} cylDef    — phần tử trong devices[] hoặc cylinders[]
- * @param {number} devIndex  — thứ tự trong danh sách (0-based)
+ * @param {Object} cylDef          — phần tử trong devices[] hoặc cylinders[]
+ * @param {number} devIndex        — thứ tự trong danh sách (0-based)
+ * @param {Object} [varTableSignals] — kết quả từ ucScanSignalsFromVars (có thể undefined)
  * @returns {Object}
  */
-function ucResolveCylinderAdminAddrs(cylDef, devIndex) {
+function ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals) {
   const idx = (cylDef.index != null) ? cylDef.index : devIndex;
+  const vt  = varTableSignals || {};
   return {
-    hmiManBtn:   cylDef.hmiManBtn   || ucMkMRPlain(UC_HMI_MAN_BASE + idx),
+    hmiManBtn:   vt['HmiManBtn'] || cylDef.hmiManBtn   || ucMkMRPlain(UC_HMI_MAN_BASE + idx),
     sysManFlag:  cylDef.sysManFlag  || ucMkMRPlain(UC_SYS_MAN_BASE + idx),
-    lockDirA:    cylDef.lockDirA    || ucMkMRPlain(UC_LOCK_BASE + idx * 2),
-    lockDirB:    cylDef.lockDirB    || ucMkMRPlain(UC_LOCK_BASE + idx * 2 + 1),
-    errFlagDirA: cylDef.errFlagDirA || ucMkMRPlain(UC_ERR_BASE  + idx * 2),
-    errFlagDirB: cylDef.errFlagDirB || ucMkMRPlain(UC_ERR_BASE  + idx * 2 + 1),
+    lockDirA:    vt['LockA']    || cylDef.lockDirA    || ucMkMRPlain(UC_LOCK_BASE + idx * 2),
+    lockDirB:    vt['LockB']    || cylDef.lockDirB    || ucMkMRPlain(UC_LOCK_BASE + idx * 2 + 1),
+    errFlagDirA: vt['ErrorA']   || cylDef.errFlagDirA || ucMkMRPlain(UC_ERR_BASE  + idx * 2),
+    errFlagDirB: vt['ErrorB']   || cylDef.errFlagDirB || ucMkMRPlain(UC_ERR_BASE  + idx * 2 + 1),
     errorTimeout:cylDef.errorTimeout || UC_ERR_TIMEOUT,
+    // Bypass sensor flags (chỉ có khi import Excel → Cylinder device type)
+    disSnsA:     vt['DisSnsH']  || cylDef.disSnsA     || '',
+    disSnsB:     vt['DisSnsL']  || cylDef.disSnsB     || '',
   };
 }
 
@@ -254,6 +309,15 @@ function ucNormalizeDeviceList(unitConfig) {
       return Object.assign({ kind: 'cylinder', index: i }, cy);
     });
   }
+  // v1 Excel fallback: auto-detect devices từ project.excelVars
+  // Mỗi var có format='Cylinder' → một cylinder device entry
+  const excelVars = (typeof project !== 'undefined' && project.excelVars) ? project.excelVars : [];
+  const cylinderVars = excelVars.filter(function(v) { return v.format === 'Cylinder'; });
+  if (cylinderVars.length) {
+    return cylinderVars.map(function(v, i) {
+      return { kind: 'cylinder', id: v.label, label: v.label, index: i };
+    });
+  }
   return [];
 }
 
@@ -285,6 +349,51 @@ function ucBuildWarnings(ctx) {
 }
 
 // ─── Load JSON file qua FileReader ───────────────────────────────────────────
+function cgUCLoadFile(inputId, onSuccess) {
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ucBuildSyntheticConfig()
+//  Tạo unitConfig object tổng hợp từ project.unitConfig (lưu bởi Excel import)
+//  để dùng khi user không load JSON file.
+//  Format output giống unit-config.json v3.
+// ═══════════════════════════════════════════════════════════════════════════════
+function ucBuildSyntheticConfig(selectedUnitId) {
+  const units = (typeof project !== 'undefined' && project.units) || [];
+  const unitConfig = (typeof project !== 'undefined' && project.unitConfig) || {};
+
+  // Tìm unit đang chọn
+  let unitObj = null;
+  if (selectedUnitId && selectedUnitId !== '__none__') {
+    unitObj = units.find(function(u) { return u.id === selectedUnitId; });
+  }
+  if (!unitObj && units.length > 0) unitObj = units[0];
+
+  const unitLabel = unitObj ? (unitObj.name || unitObj.id) : 'Unit';
+  const ucEntry   = unitConfig[unitLabel] || unitConfig[unitObj && unitObj.id] || {};
+
+  // Devices: auto-detect từ excelVars (Cylinder type)
+  const excelVars = (typeof project !== 'undefined' && project.excelVars) || [];
+  const devices = excelVars
+    .filter(function(v) { return v.format === 'Cylinder'; })
+    .map(function(v, i) {
+      return { kind: 'cylinder', id: v.label, label: v.label, index: i };
+    });
+
+  return {
+    unit: {
+      label:          unitLabel,
+      unitIndex:      ucEntry.unitIndex      != null ? ucEntry.unitIndex      : 0,
+      originBaseAddr: ucEntry.originBaseAddr || '@MR100',
+      autoBaseAddr:   ucEntry.autoBaseAddr   || '@MR300',
+      overrides: {
+        flags: ucEntry.flags || {},
+        io:    ucEntry.io    || {},
+      }
+    },
+    devices: devices
+  };
+}
+
 function cgUCLoadFile(inputId, onSuccess) {
   const el = document.getElementById(inputId);
   if (!el || !el.files || !el.files.length) return;
@@ -637,11 +746,15 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   ];
 
   // Gom tất cả vars từ mọi diagram (để lookup sensor + ucScanSignalsFromVars)
-  const allVarsGlobal = (originSeqData ? originSeqData.vars : []).concat(
-    stationDiags.flatMap(function(diag) {
-      const sd = loadSeq(diag);
-      return sd ? sd.vars : [];
-    })
+  // v1: prepend project.excelVars → ưu tiên thấp hơn diagram vars (diagram vars override)
+  const excelVarsSrc = (typeof project !== 'undefined' && project.excelVars) ? project.excelVars : [];
+  const allVarsGlobal = excelVarsSrc.concat(
+    (originSeqData ? originSeqData.vars : []).concat(
+      stationDiags.flatMap(function(diag) {
+        const sd = loadSeq(diag);
+        return sd ? sd.vars : [];
+      })
+    )
   );
 
   // ── v3: chuẩn hóa danh sách thiết bị ─────────────────────────────────────
@@ -799,7 +912,8 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
       });
 
       // ── v3: Admin addresses từ ucResolveCylinderAdminAddrs ───────────────
-      const adminAddrs = ucResolveCylinderAdminAddrs(cy, listIndex);
+      // v1 Excel: truyền varTableSignals để ưu tiên địa chỉ từ Excel
+      const adminAddrs = ucResolveCylinderAdminAddrs(cy, listIndex, varTableSignals);
 
       return {
         id:           cy.id,
@@ -812,6 +926,9 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         errFlagDirA:  adminAddrs.errFlagDirA,
         errFlagDirB:  adminAddrs.errFlagDirB,
         errorTimeout: adminAddrs.errorTimeout,
+        // Bypass sensor flags (từ Excel DisSnsH/DisSnsL)
+        disSnsA:      adminAddrs.disSnsA,
+        disSnsB:      adminAddrs.disSnsB,
         // Physical I/O (từ Variable Table + fallback)
         outDirA:      outDirA,
         outDirB:      outDirB,
@@ -832,6 +949,29 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const originSeqEnd = originSteps.length
     ? originSteps[originSteps.length - 1].cmpAddr
     : flags.flagHomed;
+
+  // ── Step 6: Post-pass — gán disSns cho từng computed step ─────────────────
+  // Mỗi step có action → cylinder, hướng dirA → disSns = cylinder.disSnsA
+  //                                   hướng dirB → disSns = cylinder.disSnsB
+  // disSns được dùng trong step-body.hbs để bypass sensor khi bypass flag active.
+  const cylinderMap6 = {};
+  cylinders.forEach(function(cy) { cylinderMap6[cy.id] = cy; });
+  function assignDisSns(stepsArr) {
+    stepsArr.forEach(function(step) {
+      let disSns = '';
+      step.actions.forEach(function(act) {
+        if (!act.devLabel || !ucIsExecuteSignal(act.sigName)) return;
+        const cy = cylinderMap6[act.devLabel];
+        if (!cy) return;
+        const dir = ucDirFromSigName(act.sigName);
+        if (dir === cy.dirAName && cy.disSnsA) disSns = cy.disSnsA;
+        else if (dir === cy.dirBName && cy.disSnsB) disSns = cy.disSnsB;
+      });
+      step.disSns = disSns;
+    });
+  }
+  assignDisSns(originSteps);
+  stationFlows.forEach(function(f) { assignDisSns(f.steps); });
 
   // ── flagsResetEnd: địa chỉ cuối cùng cần reset khi eStop/error ───────────
   // = autoBaseNum + 115 (đủ cover toàn bộ station steps + buffer)
@@ -1499,6 +1639,8 @@ function cgUCBuildTemplateContext(ctx) {
       hasDirBOutput:     hasDirBOutput,
       errTimerDirA:      !!(cy.outDirA && cy.sensorDirA && cy.errFlagDirA),
       errTimerDirB:      !!(cy.outDirB && cy.sensorDirB && cy.errFlagDirB),
+      disSnsA:           cy.disSnsA || '',
+      disSnsB:           cy.disSnsB || '',
     });
   });
 
@@ -1523,6 +1665,7 @@ function cgUCBuildTemplateContext(ctx) {
       // buildComputedSteps — use them directly instead of positional lookup.
       prevCmpAddr:     step.prevCmpAddr     || '',
       prevActionLabel: step.prevActionLabel || '',
+      disSns:          step.disSns          || '',
     });
   });
   const lastOriginStep = originSteps.length > 0
@@ -1538,6 +1681,7 @@ function cgUCBuildTemplateContext(ctx) {
         // buildComputedSteps — use them directly instead of positional lookup.
         prevCmpAddr:     step.prevCmpAddr     || '',
         prevActionLabel: step.prevActionLabel || '',
+        disSns:          step.disSns          || '',
       });
     });
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;

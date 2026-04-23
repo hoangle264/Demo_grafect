@@ -226,6 +226,7 @@
         <button class="vt-btn g" onclick="vtAddRow()">+ Add</button>
         <button class="vt-btn" onclick="vtImportCSV()" title="Import CSV">↑ CSV</button>
         <button class="vt-btn" onclick="vtExportCSV()" title="Export CSV">↓ CSV</button>
+        <button class="vt-btn" onclick="showExcelImportModal()" title="Import Excel/CSV dữ liệu thiết bị" style="border-color:#34d399;color:#34d399;">📥 Excel</button>
         <button class="vt-btn r" id="vt-del-btn" onclick="vtDeleteSelected()" disabled title="Delete selected">⊘ Del</button>
         <button class="pin-btn" id="pin-vt" onclick="toggleVarTable()" title="Collapse">📌</button>
       </div>
@@ -580,6 +581,7 @@
 <script src="js/editor/export.js"></script>
 <script src="js/editor/tables.js"></script>
 <script src="js/editor/vars.js"></script>
+<script src="js/editor/excel-import.js"></script>
 <script src="js/codegen/kv-generator.js"></script>
 <script src="js/codegen/sequence.js"></script>
 <script src="js/codegen/st-generator.js"></script>

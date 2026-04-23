@@ -306,12 +306,18 @@ const UC_PARTIAL_BUNDLE = {
 
   // ── src/templates/step-body.hbs ──────────────────────────────────────────
   //  *** SỬA ĐÂY để thay đổi format completion của mỗi step ***
-  //  Mặc định: LD addr → AND sensor → SET cmpAddr (latch bit)
+  //  Mặc định: LD addr → AND sensor (OR disSns bypass) → OUT cmpAddr
   step_body: `LD   {{pad addr}}; {{{actionLabel}}}
 {{#if sensor}}
+{{#if disSns}}
+LD   {{pad sensor}}; {{{sensorLabel}}}
+OR   {{pad disSns}}; {{{actionLabel}}} DisSns bypass
+ANL
+{{else}}
 AND  {{pad sensor}}; {{{sensorLabel}}}
 {{/if}}
-SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+{{/if}}
+OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
 
   // ── src/templates/devices/cylinder.hbs ───────────────────────────────────
@@ -363,6 +369,9 @@ SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{#if errTimerDirA}}
 LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+{{#if disSnsA}}
+ANB  {{pad disSnsA}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
@@ -370,6 +379,9 @@ ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_
 {{#if errTimerDirB}}
 LD   {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 ANB  {{pad sensorDirB}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+{{#if disSnsB}}
+ANB  {{pad disSnsB}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}

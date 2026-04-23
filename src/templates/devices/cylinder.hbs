@@ -52,6 +52,9 @@ SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{#if errTimerDirA}}
 LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+{{#if disSnsA}}
+ANB  {{pad disSnsA}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
@@ -59,6 +62,9 @@ ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_
 {{#if errTimerDirB}}
 LD   {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 ANB  {{pad sensorDirB}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+{{#if disSnsB}}
+ANB  {{pad disSnsB}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
 ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}

@@ -19,7 +19,9 @@ let project = {
   units:[],                // [{id, name, open}]
   diagrams:[],             // [{id, name, unitId, folderId (legacy), mode, diagramType, machine, unit}]
   folders:[],              // legacy virtual folders (kept for compat)
-  devices:[]               // [{id, name, open, signals:[{id,name,dataType,ioType,address}]}]
+  devices:[],              // [{id, name, open, signals:[{id,name,dataType,ioType,address}]}]
+  excelVars:[],            // [{label, format, signalAddresses:{...}, comment, _source:'excel'}]
+  unitConfig:{}            // {[unitLabel]: {label, unitIndex, originBaseAddr, autoBaseAddr, flags, io}}
 };
 let openTabs = [];         // [{diagramId}]
 let activeDiagramId = null;
@@ -65,6 +67,8 @@ function loadProject() {
       if (!project.devices)       project.devices = [];
       if (!project.devCategories) project.devCategories = [];
       if (!project.machineName)   project.machineName = project.name || 'Machine';
+      if (!project.excelVars)     project.excelVars = [];
+      if (!project.unitConfig)    project.unitConfig = {};
       // Migrate old diagrams that have folderId but no unitId
       project.diagrams.forEach(d=>{
         if(!d.mode)        d.mode = 'Auto';

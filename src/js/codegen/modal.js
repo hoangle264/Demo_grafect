@@ -396,9 +396,15 @@ function cgUpdatePreview() {
 
   // ── Unit Config JSON engine ───────────────────────────────────────────────
   if (isUC) {
-    if (!UC_UNIT_CONFIG) {
-      pre.textContent = '; Vui lòng load Unit Config JSON   (infeed-unit.json)';
-      if (stat) stat.textContent = 'Unit Config mode — chờ load file JSON';
+    // Dùng JSON file nếu đã load, hoặc synthetic config từ project.excelVars
+    const hasExcelVars = (typeof project !== 'undefined' && project.excelVars && project.excelVars.length > 0);
+    const selectedUnitId = cgUCGetSelectedUnitId();
+    const effectiveConfig = UC_UNIT_CONFIG
+      || (hasExcelVars && typeof ucBuildSyntheticConfig === 'function' ? ucBuildSyntheticConfig(selectedUnitId) : null);
+
+    if (!effectiveConfig) {
+      pre.textContent = '; Vui lòng load Unit Config JSON   (infeed-unit.json)\n; hoặc import dữ liệu Excel để tự động tạo config.';
+      if (stat) stat.textContent = 'Unit Config mode — chờ load file JSON hoặc import Excel';
       return;
     }
     const health = cgUCGetTemplateHealth();
@@ -406,11 +412,10 @@ function cgUpdatePreview() {
       cgUCBlockInvalidTemplates(pre, stat, health);
       return;
     }
-    const profile        = PLC_PROFILES['kv-5500'];
-    const selectedUnitId = cgUCGetSelectedUnitId();
-    const addrMode       = document.getElementById('uc-addr-mode')?.value || 'linear';
+    const profile  = PLC_PROFILES['kv-5500'];
+    const addrMode = document.getElementById('uc-addr-mode')?.value || 'linear';
     try {
-      const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
+      const result  = cgGenerateFromUnitConfig(effectiveConfig, null, profile, selectedUnitId, {
         strictTemplates: true,
         addressMode: addrMode
       });
