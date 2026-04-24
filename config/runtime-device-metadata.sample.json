@@ -1,0 +1,164 @@
+{
+  "_comment": "Runtime Device Metadata sample — explicit execute -> feedback -> output binding mapping for the new runtime planner.",
+  "_version": "1.0",
+  "_guide": [
+    "Mỗi key cấp cao nhất = tên Device Type, khớp với project.devices[].name.",
+    "signals.execute.<signalName> mô tả một action đầu ra mà step có thể gọi.",
+    "feedback: tên signal feedback chính cần để coi action là complete.",
+    "feedbacks: dùng khi một action cần nhiều feedback cùng lúc (AND semantics).",
+    "outputBindings: danh sách output vật lý logic mà action này đại diện; thường để trống nếu muốn planner tự dùng địa chỉ của execute signal.",
+    "completionMode hiện khuyến nghị dùng all-feedback-on.",
+    "Per-device override để ở unit-config devices[].signalOverrides nếu một máy khác rule chuẩn."
+  ],
+
+  "CY_Double_Act": {
+    "signals": {
+      "execute": {
+        "Out_Up": {
+          "feedback": "In_Up",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        },
+        "Out_Down": {
+          "feedback": "In_Down",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        }
+      },
+      "feedback": {
+        "In_Up": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-up"
+        },
+        "In_Down": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-down"
+        }
+      }
+    }
+  },
+
+  "CY_Single_Act": {
+    "signals": {
+      "execute": {
+        "Out_Extend": {
+          "feedbacks": ["In_Extend"],
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        }
+      },
+      "feedback": {
+        "In_Extend": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-extended"
+        },
+        "In_Retract": {
+          "role": "state",
+          "required": false,
+          "semantic": "position-retracted"
+        }
+      }
+    }
+  },
+
+  "Motor_FwdRev": {
+    "signals": {
+      "execute": {
+        "Out_Fwd": {
+          "feedback": "In_Fwd",
+          "timeoutMs": 1000,
+          "completionMode": "all-feedback-on"
+        },
+        "Out_Rev": {
+          "feedback": "In_Rev",
+          "timeoutMs": 1000,
+          "completionMode": "all-feedback-on"
+        }
+      },
+      "feedback": {
+        "In_Fwd": {
+          "role": "completion",
+          "required": true,
+          "semantic": "running-forward"
+        },
+        "In_Rev": {
+          "role": "completion",
+          "required": true,
+          "semantic": "running-reverse"
+        },
+        "Fault": {
+          "role": "diagnostic",
+          "required": false,
+          "semantic": "overload-or-fault"
+        }
+      }
+    }
+  },
+
+  "Cylinder_Up_SOL_SNS": {
+    "_comment": "Ví dụ theo naming convention anh đang nói: Up_SOL -> Up_SNS, Down_SOL -> Down_SNS.",
+    "signals": {
+      "execute": {
+        "Up_SOL": {
+          "feedback": "Up_SNS",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        },
+        "Down_SOL": {
+          "feedback": "Down_SNS",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        }
+      },
+      "feedback": {
+        "Up_SNS": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-up"
+        },
+        "Down_SNS": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-down"
+        }
+      }
+    }
+  },
+
+  "Cylinder_CoilA_LSH": {
+    "_comment": "Ví dụ explicit mapping cho case CoilA -> LSH, CoilB -> LSL.",
+    "signals": {
+      "execute": {
+        "CoilA": {
+          "feedback": "LSH",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on",
+          "outputBindings": [
+            { "physicalOutputRef": "LR100", "bindingMode": "normal" },
+            { "physicalOutputRef": "LR101", "bindingMode": "normal" }
+          ]
+        },
+        "CoilB": {
+          "feedback": "LSL",
+          "timeoutMs": 500,
+          "completionMode": "all-feedback-on"
+        }
+      },
+      "feedback": {
+        "LSH": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-A"
+        },
+        "LSL": {
+          "role": "completion",
+          "required": true,
+          "semantic": "position-B"
+        }
+      }
+    }
+  }
+}

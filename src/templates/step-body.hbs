@@ -1,0 +1,21 @@
+{{!--
+  step-body.hbs — Handlebars partial cho phần COMPLETION của một Step.
+
+  Context (được kế thừa từ vòng {{#each originSteps}} hoặc {{#each steps}}):
+    addr        : địa chỉ flag ACTIVE  của bước (VD: @MR100)
+    cmpAddr     : địa chỉ flag COMPLETE của bước (VD: @MR101)
+    sensor      : địa chỉ cảm biến xác nhận (VD: MR1001) — có thể rỗng
+    sensorLabel : nhãn hiển thị của sensor
+    actionLabel : nhãn hành động (VD: "CY1 Down")
+
+  ── Để thay đổi cách viết step, chỉ cần sửa file này ──
+  Ví dụ format hiện tại (SET — latch bit):
+      LD  addr   →  AND sensor  →  SET cmpAddr
+  Ví dụ format khác (OUT — coil thường):
+      LD  addr   →  AND sensor  →  OUT cmpAddr
+--}}
+LD   {{pad addr}}; {{{actionLabel}}}
+{{#if sensor}}
+AND  {{pad sensor}}; {{{sensorLabel}}}
+{{/if}}
+OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp

@@ -4,7 +4,8 @@
   "description": "Grafcet Studio - PLC programming tool",
   "main": "src/index.html",
   "scripts": {
-    "start": "open src/index.html"
+    "start": "npx serve src --listen 5500 --no-clipboard",
+    "start:py": "python -m http.server 5500 --directory src"
   },
   "keywords": ["grafcet", "plc", "ladder-logic"],
   "license": "MIT"

@@ -81,6 +81,58 @@ const StepRenderer = {
 // StepRenderer.  No step-level formatting lives here.
 
 function generateSTDemo(diagIds, opts) {
+  // ── Custom st_main.hbs: if loaded, delegate entirely to Handlebars ────────
+  if (typeof tmGetCustomTemplate === 'function') {
+    const stMainSrc = tmGetCustomTemplate('st_main.hbs');
+    if (stMainSrc && typeof Handlebars !== 'undefined') {
+      try {
+        const stMainFn = Handlebars.compile(stMainSrc);
+        const diagrams = diagIds.map(function(diagId) {
+          const diag = (project.diagrams || []).find(function(d) { return d.id === diagId; });
+          if (!diag) return null;
+          const data = loadDiagramData(diagId);
+          if (!data || !data.state) return null;
+          const s = data.state;
+          const sequence = cgResolveSequence(s);
+          const steps = sequence.map(function(item) {
+            return {
+              number:   String(item.step.number).padStart(2, '0'),
+              label:    item.step.label || '',
+              initial:  !!item.step.initial,
+              inCond:   item.inTrans  ? (item.inTrans.condition  || '1') : '1',
+              outCond:  item.outTrans ? (item.outTrans.condition || '1') : '1',
+              actions:  item.step.actions || [],
+            };
+          });
+          const unitName = (project.units || []).find(function(u) { return u.id === diag.unitId; });
+          return {
+            id:       diag.id,
+            name:     diag.name || diag.id,
+            mode:     diag.mode || 'Auto',
+            unitName: (unitName && unitName.name) || '',
+            steps:    steps,
+          };
+        }).filter(Boolean);
+
+        const ctx = {
+          project:  { name: project.name || '' },
+          diagrams: diagrams,
+          baseMR:   opts.baseMR || 0,
+        };
+        const code = stMainFn(ctx);
+        return {
+          code: code,
+          stats: '[custom st_main.hbs] ' + diagIds.length + ' diagram(s)'
+        };
+      } catch (e) {
+        console.warn('[st-generator] st_main.hbs render error:', e);
+        if (typeof toast === 'function') {
+          toast('⚠ st_main.hbs lỗi khi render: ' + (e.message || String(e)) + ' — dùng generator mặc định.');
+        }
+      }
+    }
+  }
+
   const lines = [];
   lines.push('(* ═══════════════════════════════════════════════════════');
   lines.push('   GRAFCET Studio — IEC 61131-3 Structured Text [DEMO]');

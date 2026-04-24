@@ -1,13 +1,20 @@
+{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  ERROR — Error detection and reset section               ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;<h1/>Error
+{{!-- ─── eStop: ZRES all step flags ──────────────────────────────────── --}}
 {{#if unit.eStop}}
 LD   {{pad unit.eStop}}; {{{unit.label}}}  estop
 ZRES {{{unit.flagOrigin}}} {{{unit.flagsResetEnd}}} ; Origin
 {{/if}}
+{{!-- ─── Manual active: ZRES origin step flags ───────────────────────── --}}
 {{#if originBase}}
 LD   {{pad unit.flagManual}}; Manual
 ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
 {{/if}}
+{{!-- ─── Error detection ─────────────────────────────────────────────── --}}
 {{#if unit.errorDMAddr}}
+{{!-- DM mode: aggregate errors via MOV, then compare against #0 --}}
 LD   CR2002           ; Always ON
 {{#each cylinders}}
 {{#if errFlagDirA}}
@@ -16,6 +23,7 @@ MOV  {{pad errFlagDirA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{
 {{/each}}
 LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
 {{else}}
+{{!-- Flag mode: OR all cylinder error flags --}}
 {{#each cylinders}}
 {{#if errFlagDirA}}
 {{#if @first}}LD   {{else}}OR   {{/if}}{{pad errFlagDirA}}; Error_{{{label}}}_{{{dirAName}}}
@@ -25,9 +33,11 @@ OR   {{pad errFlagDirB}}; Error_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/each}}
 {{/if}}
+{{!-- ─── Error flag + ErrStop latch ──────────────────────────────────── --}}
 SET  {{pad unit.flagError}}; Error
 LD   {{pad unit.flagError}}; Error
 SET  {{pad unit.flagErrStop}}; Operation Error Stop
+{{!-- ─── Reset sequence: btnReset → DIFU pulse → ZRES error flags ─────── --}}
 LD   {{pad unit.flagErrStop}}; Operation Error Stop
 {{#if unit.btnReset}}
 AND  {{pad unit.btnReset}}; btnReset

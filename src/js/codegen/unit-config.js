@@ -34,6 +34,7 @@
 // ─── Global storage cho JSON configs ─────────────────────────────────────────
 let UC_UNIT_CONFIG    = null;   // nội dung unit-config.json (v2 hoặc v3)
 let UC_CYLINDER_TYPES = null;   // không còn bắt buộc — giữ lại cho tương thích ngược
+let UC_RUNTIME_DEVICE_META = null; // runtime metadata explicit cho execute -> feedback
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  UC v3 — CONSTANTS & DEFAULT MAPPINGS
@@ -307,21 +308,58 @@ function ucParseBase(baseStr) {
 function ucMRAddr(baseNum, offset) {
   return '@MR' + String(baseNum + offset).padStart(3, '0');
 }
+// ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
+// VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
+function ucMRAddrBlock(baseNum, stepIndex) {
+  const blockIndex  = Math.floor(stepIndex / 8);
+  const posInBlock  = stepIndex % 8;
+  const num = baseNum + blockIndex * 100 + posInBlock * 2;
+  return '@MR' + String(num).padStart(3, '0');
+}
+function ucMRAddrBlockCmp(baseNum, stepIndex) {
+  const blockIndex  = Math.floor(stepIndex / 8);
+  const posInBlock  = stepIndex % 8;
+  const num = baseNum + blockIndex * 100 + posInBlock * 2 + 1;
+  return '@MR' + String(num).padStart(3, '0');
+}
 
-// ─── Lấy tên hướng từ sigName (VD: 'Up_SOL' → 'Up', 'Down_SNS' → 'Down') ───
+// ─── Lấy tên hướng từ sigName (VD: 'Up_SOL' → 'Up', 'CoilA' → 'CoilA') ─────
 function ucDirFromSigName(sigName) {
   if (!sigName) return '';
+  const upper = String(sigName).toUpperCase();
+  if (upper === 'COILA' || upper === 'LSH') return 'CoilA';
+  if (upper === 'COILB' || upper === 'LSL') return 'CoilB';
   return sigName.split('_')[0];
 }
 
-// ─── Kiểm tra sigName có phải output SOL không ────────────────────────────────
-function ucIsSOL(sigName) {
-  return sigName && sigName.toUpperCase().endsWith('_SOL');
+// ─── Kiểm tra sigName có phải output điều khiển của cylinder không ───────────
+function ucIsExecuteSignal(sigName) {
+  const upper = sigName && sigName.toUpperCase();
+  return !!upper && (upper.endsWith('_SOL') || upper === 'COILA' || upper === 'COILB');
 }
 
-// ─── Kiểm tra sigName có phải sensor SNS không ────────────────────────────────
-function ucIsSNS(sigName) {
-  return sigName && sigName.toUpperCase().endsWith('_SNS');
+// ─── Kiểm tra sigName có phải feedback sensor của cylinder không ─────────────
+function ucIsFeedbackSignal(sigName) {
+  const upper = sigName && sigName.toUpperCase();
+  return !!upper && (upper.endsWith('_SNS') || upper === 'LSH' || upper === 'LSL');
+}
+
+function ucGetOutputSignalCandidates(dirName) {
+  if (dirName === 'CoilA') return ['CoilA'];
+  if (dirName === 'CoilB') return ['CoilB'];
+  return dirName ? [dirName + '_SOL'] : [];
+}
+
+function ucGetFeedbackSignalCandidates(dirName) {
+  if (dirName === 'CoilA') return ['LSH'];
+  if (dirName === 'CoilB') return ['LSL'];
+  return dirName ? [dirName + '_SNS'] : [];
+}
+
+function ucFindFirstSignalAddress(signalMap, candidates) {
+  return (candidates || []).map(function(name) {
+    return signalMap && signalMap[name] || '';
+  }).find(Boolean) || '';
 }
 
 // ─── Build context object từ unitConfig + canvas diagrams ────────────────────
@@ -334,8 +372,9 @@ function ucIsSNS(sigName) {
 //  - devices[] chuẩn hóa qua ucNormalizeDeviceList (tương thích v2 cylinders[]).
 //  - Admin addresses (hmiManBtn, lock, err…) tính qua ucResolveCylinderAdminAddrs.
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
-function cgUCBuildContext(unitConfig) {
+function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
+  const addressMode = (options && options.addressMode) || 'linear'; // 'linear' | 'block'
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
   const flags  = ucResolveUnitFlags(u);
@@ -349,15 +388,24 @@ function cgUCBuildContext(unitConfig) {
   // Mode='Origin' → origin flow; Mode='Auto' hoặc không có → station flows
   const allDiags = (typeof project !== 'undefined' && project.diagrams) ? project.diagrams : [];
 
-  // Tìm unit ID trong project.units theo label
-  const unitObj = (typeof project !== 'undefined' && project.units || [])
-    .find(function(pu) { return pu.name === u.label || pu.id === u.id; });
-  const unitId = unitObj ? unitObj.id : null;
+  // Ưu tiên 1: selectedUnitId được truyền vào từ UI selector
+  // Ưu tiên 2: tìm unit trong project.units theo label/id từ JSON config
+  // Fallback: lấy tất cả diagrams (chỉ khi project chỉ có 1 unit)
+  let unitId = selectedUnitId || null;
+  if (!unitId) {
+    const unitObj = (typeof project !== 'undefined' && project.units || [])
+      .find(function(pu) { return pu.name === u.label || pu.id === u.id; });
+    unitId = unitObj ? unitObj.id : null;
+  }
 
-  // Lọc diagrams theo unitId (nếu có) hoặc lấy tất cả nếu project chỉ có 1 unit
+  // Lọc diagrams theo unitId — nếu không tìm được, lấy tất cả nếu chỉ có 1 unit
+  const hasMultipleUnits = (typeof project !== 'undefined' && (project.units || []).length > 1);
   const unitDiags = unitId
-    ? allDiags.filter(function(d) { return d.unitId === unitId; })
-    : allDiags;
+    ? allDiags.filter(function(d) {
+        if (unitId === '__none__') return !d.unitId;
+        return d.unitId === unitId;
+      })
+    : (hasMultipleUnits ? [] : allDiags);
 
   // ── Origin flow ───────────────────────────────────────────────────────────
   const originDiag = unitDiags.find(function(d) {
@@ -382,11 +430,18 @@ function cgUCBuildContext(unitConfig) {
   }
 
   // ── Build computed steps cho một flow sequence ────────────────────────────
-  // Trả về mảng step objects với addr, cmpAddr, label, actions[], sensor
+  // Trả về mảng step objects với addr, cmpAddr, label, actions[], sensor,
+  // prevCmpAddr, prevActionLabel (resolved via inTrans — not positional).
   function buildComputedSteps(seqData, baseNum) {
     if (!seqData) return [];
-    const { sequence, vars } = seqData;
-    return sequence.map(function(item, i) {
+    const { sequence, vars, s } = seqData;
+    // Graph data needed for predecessor lookup via inTrans
+    const seqConnections = (s && s.connections) || [];
+    const seqSteps       = (s && s.steps)       || [];
+    const seqParallels   = (s && s.parallels)   || [];
+
+    // ── Pass 1: compute per-step properties (addr, cmpAddr, actions, sensor…)
+    const items = sequence.map(function(item, i) {
       const { step, inTrans, outTrans } = item;
 
       // Actions: lọc qualifier='N' (SET-action)
@@ -476,8 +531,8 @@ function cgUCBuildContext(unitConfig) {
         const cond = inTrans.condition.trim();
         if (cond && cond !== '1' && cond !== 'true') {
           // Nếu condition có _SNS suffix → đây là sensor của step trước → không phải extraCondition
-          const isSNSCond = ucIsSNS(cond) ||
-            (cond.includes('.') && ucIsSNS(cond.substring(cond.indexOf('.') + 1)));
+          const isSNSCond = ucIsFeedbackSignal(cond) ||
+            (cond.includes('.') && ucIsFeedbackSignal(cond.substring(cond.indexOf('.') + 1)));
           if (!isSNSCond) {
             // Resolve địa chỉ
             let extraAddr = '';
@@ -505,16 +560,49 @@ function cgUCBuildContext(unitConfig) {
       }
 
       return {
-        addr:           ucMRAddr(baseNum, i * 2),
-        cmpAddr:        ucMRAddr(baseNum, i * 2 + 1),
+        addr:           addressMode === 'block' ? ucMRAddrBlock(baseNum, i)    : ucMRAddr(baseNum, i * 2),
+        cmpAddr:        addressMode === 'block' ? ucMRAddrBlockCmp(baseNum, i) : ucMRAddr(baseNum, i * 2 + 1),
         label:          step.label || ('Step ' + step.number),
         actions:        actions,
         sensor:         sensor,
         sensorLabel:    sensorLabel,
         extraCondition: extraCondition,
         stepIndex:      i,
-        stepId:         step.id
+        stepId:         step.id,
+        _inTrans:       inTrans   // temporary: consumed in pass 2 for predecessor lookup
       };
+    });
+
+    // ── Pass 2: resolve prevCmpAddr / prevActionLabel via inTrans ─────────
+    // Build a map for O(1) lookup of predecessor computed step by step ID.
+    const itemByStepId = {};
+    items.forEach(function(it) { itemByStepId[it.stepId] = it; });
+
+    return items.map(function(it) {
+      let prevCmpAddr     = '';
+      let prevActionLabel = '';
+      if (it._inTrans && typeof resolveStepsThrough === 'function') {
+        // resolveStepsThrough is a global defined in graph-utils.js, loaded before
+        // this file in the browser.  The typeof guard protects unit tests that
+        // call buildComputedSteps in isolation without the full bundle.
+        // Find the step(s) immediately upstream of this step's incoming transition.
+        // For alternative branching a step has exactly one predecessor; for a
+        // parallel join there could be multiple — we use the first since unit-config
+        // generators produce one sequential activation block per step.
+        const predSteps = resolveStepsThrough(
+          it._inTrans.id, 'upstream', seqConnections, seqSteps, seqParallels
+        );
+        if (predSteps.length > 0) {
+          const predItem = itemByStepId[predSteps[0].id];
+          if (predItem) {
+            prevCmpAddr     = predItem.cmpAddr;
+            prevActionLabel = ucComputeActionLabel(predItem);
+          }
+        }
+      }
+      const result = Object.assign({}, it, { prevCmpAddr: prevCmpAddr, prevActionLabel: prevActionLabel });
+      delete result._inTrans;
+      return result;
     });
   }
 
@@ -571,7 +659,7 @@ function cgUCBuildContext(unitConfig) {
       const cyActions = [];
       allComputedSteps.forEach(function(cs) {
         cs.actions.forEach(function(act) {
-          if (act.devLabel === cy.id && ucIsSOL(act.sigName)) {
+          if (act.devLabel === cy.id && ucIsExecuteSignal(act.sigName)) {
             cyActions.push({ step: cs, act: act });
           }
         });
@@ -583,7 +671,7 @@ function cgUCBuildContext(unitConfig) {
       const originCyDirs = new Set();
       originSteps.forEach(function(cs) {
         cs.actions.forEach(function(act) {
-          if (act.devLabel === cy.id && ucIsSOL(act.sigName)) {
+          if (act.devLabel === cy.id && ucIsExecuteSignal(act.sigName)) {
             originCyDirs.add(ucDirFromSigName(act.sigName));
           }
         });
@@ -593,7 +681,7 @@ function cgUCBuildContext(unitConfig) {
       stationFlows.forEach(function(f) {
         f.steps.forEach(function(cs) {
           cs.actions.forEach(function(act) {
-            if (act.devLabel === cy.id && ucIsSOL(act.sigName)) {
+            if (act.devLabel === cy.id && ucIsExecuteSignal(act.sigName)) {
               stationCyDirs.add(ucDirFromSigName(act.sigName));
             }
           });
@@ -608,13 +696,18 @@ function cgUCBuildContext(unitConfig) {
       if (!dirACandidates.length && dirBCandidates.length >= 2) {
         dirAName = dirBCandidates[1];
         dirBName = dirBCandidates[0];
+      } else if (!dirBName && dirACandidates.length >= 2) {
+        // Cả 2 hướng đều chỉ xuất hiện trong Station (không có Origin diagram,
+        // hoặc Origin không chứa action nào của cylinder này).
+        // → Hướng thứ 2 trong station được coi là dirB (chiều trở về trong auto cycle).
+        dirBName = dirACandidates[1];
       }
 
       // ── Lấy địa chỉ output từ Variable Table (ưu tiên) ──────────────────
       // v3: ucScanSignalsFromVars trả về { "Up_SOL": "LR000", ... }
       // → ưu tiên over physAddr từ step.actions (để tránh nhầm)
-      let outDirA = (dirAName && varTableSignals[dirAName + '_SOL']) || '';
-      let outDirB = (dirBName && varTableSignals[dirBName + '_SOL']) || '';
+      let outDirA = ucFindFirstSignalAddress(varTableSignals, ucGetOutputSignalCandidates(dirAName));
+      let outDirB = ucFindFirstSignalAddress(varTableSignals, ucGetOutputSignalCandidates(dirBName));
 
       // Fallback: lấy từ step actions nếu Variable Table không có (VD: plain BOOL var)
       if (!outDirA || !outDirB) {
@@ -633,14 +726,14 @@ function cgUCBuildContext(unitConfig) {
 
       // ── Lấy sensor từ Variable Table (ưu tiên, tránh lỗi KV_ADDR_RE) ───
       // v3: ucScanSignalsFromVars → { "Up_SNS": "MR1000", ... }
-      let sensorDirA = (dirAName && varTableSignals[dirAName + '_SNS']) || '';
-      let sensorDirB = (dirBName && varTableSignals[dirBName + '_SNS']) || '';
+      let sensorDirA = ucFindFirstSignalAddress(varTableSignals, ucGetFeedbackSignalCandidates(dirAName));
+      let sensorDirB = ucFindFirstSignalAddress(varTableSignals, ucGetFeedbackSignalCandidates(dirBName));
 
       // Fallback 1: lấy từ sensor của step (transition condition)
       if (!sensorDirA || !sensorDirB) {
         allComputedSteps.forEach(function(cs) {
           cs.actions.forEach(function(act) {
-            if (act.devLabel !== cy.id || !ucIsSOL(act.sigName)) return;
+            if (act.devLabel !== cy.id || !ucIsExecuteSignal(act.sigName)) return;
             const dir = ucDirFromSigName(act.sigName);
             if (dir === dirAName && !sensorDirA && cs.sensor) sensorDirA = cs.sensor;
             if (dir === dirBName && !sensorDirB && cs.sensor) sensorDirB = cs.sensor;
@@ -650,42 +743,51 @@ function cgUCBuildContext(unitConfig) {
 
       // Fallback 2: cgResolveSignalInfo với dot-notation thủ công (an toàn)
       if (!sensorDirA && dirAName) {
-        const snsSig = cy.id + '.' + dirAName + '_SNS';
-        // Dot-notation thủ công — không qua KV_ADDR_RE
-        const dotIdx = snsSig.indexOf('.');
-        const dLabel = snsSig.substring(0, dotIdx);
-        const sName  = snsSig.substring(dotIdx + 1);
-        const vv = allVarsGlobal.find(function(x) { return x.label === dLabel; });
-        if (vv && vv.signalAddresses) {
+        ucGetFeedbackSignalCandidates(dirAName).some(function(signalName) {
+          const snsSig = cy.id + '.' + signalName;
+          const dotIdx = snsSig.indexOf('.');
+          const dLabel = snsSig.substring(0, dotIdx);
+          const sName  = snsSig.substring(dotIdx + 1);
+          const vv = allVarsGlobal.find(function(x) { return x.label === dLabel; });
+          if (!vv || !vv.signalAddresses) return false;
           const dt = (typeof project !== 'undefined' && project.devices || [])
             .find(function(d) { return d.name === (vv.format || ''); });
           const sg = (dt && dt.signals || []).find(function(s) { return s.name === sName; });
-          if (sg && vv.signalAddresses[sg.id]) sensorDirA = vv.signalAddresses[sg.id];
-        }
+          if (sg && vv.signalAddresses[sg.id]) {
+            sensorDirA = vv.signalAddresses[sg.id];
+            return true;
+          }
+          return false;
+        });
       }
       if (!sensorDirB && dirBName) {
-        const snsSig = cy.id + '.' + dirBName + '_SNS';
-        const dotIdx = snsSig.indexOf('.');
-        const dLabel = snsSig.substring(0, dotIdx);
-        const sName  = snsSig.substring(dotIdx + 1);
-        const vv = allVarsGlobal.find(function(x) { return x.label === dLabel; });
-        if (vv && vv.signalAddresses) {
+        ucGetFeedbackSignalCandidates(dirBName).some(function(signalName) {
+          const snsSig = cy.id + '.' + signalName;
+          const dotIdx = snsSig.indexOf('.');
+          const dLabel = snsSig.substring(0, dotIdx);
+          const sName  = snsSig.substring(dotIdx + 1);
+          const vv = allVarsGlobal.find(function(x) { return x.label === dLabel; });
+          if (!vv || !vv.signalAddresses) return false;
           const dt = (typeof project !== 'undefined' && project.devices || [])
             .find(function(d) { return d.name === (vv.format || ''); });
           const sg = (dt && dt.signals || []).find(function(s) { return s.name === sName; });
-          if (sg && vv.signalAddresses[sg.id]) sensorDirB = vv.signalAddresses[sg.id];
-        }
+          if (sg && vv.signalAddresses[sg.id]) {
+            sensorDirB = vv.signalAddresses[sg.id];
+            return true;
+          }
+          return false;
+        });
       }
 
       // ── steps cho dirA và dirB ───────────────────────────────────────────
       const stepsForDirA = allComputedSteps.filter(function(cs) {
         return cs.actions.some(function(a) {
-          return a.devLabel === cy.id && ucIsSOL(a.sigName) && ucDirFromSigName(a.sigName) === dirAName;
+          return a.devLabel === cy.id && ucIsExecuteSignal(a.sigName) && ucDirFromSigName(a.sigName) === dirAName;
         });
       });
       const stepsForDirB = allComputedSteps.filter(function(cs) {
         return cs.actions.some(function(a) {
-          return a.devLabel === cy.id && ucIsSOL(a.sigName) && ucDirFromSigName(a.sigName) === dirBName;
+          return a.devLabel === cy.id && ucIsExecuteSignal(a.sigName) && ucDirFromSigName(a.sigName) === dirBName;
         });
       });
 
@@ -717,6 +819,8 @@ function cgUCBuildContext(unitConfig) {
         sensorDirB:   sensorDirB,
         dirAName:     dirAName,
         dirBName:     dirBName,
+        fbDirAName:   ucGetFeedbackSignalCandidates(dirAName)[0] || dirAName,
+        fbDirBName:   ucGetFeedbackSignalCandidates(dirBName)[0] || dirBName,
         // Steps
         stepDirA:     stationStepsDirA[0] || stepsForDirA[0] || null,
         stepsForDirB: stepsForDirB,
@@ -768,6 +872,7 @@ function cgUCBuildContext(unitConfig) {
     originSteps:  originSteps,
     stationFlows: stationFlows,
     deviceList:   deviceList,
+    addressMode:  addressMode,
     // v3: expose warnings để entry point chèn vào output
     warnings:     ucBuildWarnings({ unit, cylinders, originSteps, stationFlows })
   };
@@ -775,6 +880,19 @@ function cgUCBuildContext(unitConfig) {
 
 // ─── p: pad address string for alignment ─────────────────────────────────────
 function ucPad(addr) { return String(addr).padEnd(12); }
+
+// ─── Tính địa chỉ cuối vùng ZRES theo mode ──────────────────────────────────
+// linear: baseNum + max(15, stepCount*2+6)
+// block : cuối block chứa step cuối = baseNum + blockIndex*100 + 15
+function ucResetEndAddr(baseNum, stepCount, addressMode) {
+  if (addressMode === 'block') {
+    const lastBlockIndex = Math.floor((stepCount - 1) / 8);
+    const num = baseNum + lastBlockIndex * 100 + 15;
+    return '@MR' + String(num).padStart(3, '0');
+  }
+  const num = baseNum + Math.max(15, stepCount * 2 + 6);
+  return '@MR' + String(num).padStart(3, '0');
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  SECTION GENERATORS
@@ -969,11 +1087,11 @@ function cgUCGenerateOrigin(ctx) {
         L.push(`ANB  ${ucPad(u.flagHomed)}; Homed`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
       } else {
-        const prev = originSteps[i - 1];
-        const prevLabel = prev.actions.length
-          ? prev.actions.map(function(a) { return (a.devLabel || '') + ' ' + ucDirFromSigName(a.sigName || ''); }).join(', ')
-          : prev.label;
-        L.push(`LD   ${ucPad(prev.cmpAddr)}; ${prevLabel} Cmp`);
+        // Use the predecessor address stored in step.prevCmpAddr (resolved from
+        // inTrans in buildComputedSteps), not the positional array index.
+        const prevCmpAddr = step.prevCmpAddr || '';
+        const prevLabel   = step.prevActionLabel || step.label;
+        L.push(`LD   ${ucPad(prevCmpAddr)}; ${prevLabel} Cmp`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
       }
 
@@ -1057,11 +1175,11 @@ function cgUCGenerateAuto(ctx) {
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
         L.push(`SET  ${ucPad(step.addr)}; ${actionLabel || step.label}`);
       } else {
-        const prev = flow.steps[i - 1];
-        const prevLabel = prev.actions.length
-          ? prev.actions.map(function(a) { return (a.devLabel || '') + ' ' + ucDirFromSigName(a.sigName || ''); }).join(', ')
-          : prev.label;
-        L.push(`LD   ${ucPad(prev.cmpAddr)}; ${prevLabel} Cmp`);
+        // Use the predecessor address stored in step.prevCmpAddr (resolved from
+        // inTrans in buildComputedSteps), not the positional array index.
+        const prevCmpAddr = step.prevCmpAddr || '';
+        const prevLabel   = step.prevActionLabel || step.label;
+        L.push(`LD   ${ucPad(prevCmpAddr)}; ${prevLabel} Cmp`);
         L.push(`ANB  ${ucPad(u.flagError)}; Error`);
         if (step.extraCondition && step.extraCondition.trim()) {
           L.push(step.extraCondition.trim());
@@ -1084,10 +1202,9 @@ function cgUCGenerateAuto(ctx) {
     L.push(`LD   ${ucPad(lastStep.cmpAddr)}; ${lastLabel} Cmp`);
     L.push(`DIFU ${ucPad(endPulse)}; Sequence 1 End`);
     L.push(`LD   ${ucPad(endPulse)}; Sequence 1 End`);
-    // ZRES: reset từ step[0].addr đến cuối vùng đệm (16 slot = baseNum+15)
-    const firstAddr   = flow.steps[0].addr;
-    const resetEndNum = flow.baseNum + Math.max(15, flow.steps.length * 2 + 6);
-    const resetEndAddr = '@MR' + String(resetEndNum).padStart(3, '0');
+    // ZRES: reset từ step[0].addr đến cuối vùng đệm
+    const firstAddr    = flow.steps[0].addr;
+    const resetEndAddr = ucResetEndAddr(flow.baseNum, flow.steps.length, ctx.addressMode);
     L.push(`ZRES ${firstAddr} ${resetEndAddr} ; ${lastLabel} Cmp`);
   });
 
@@ -1192,6 +1309,11 @@ function cgUCGenerateOutput(ctx) {
 /** Cache: { error, manual, origin, auto, output } → compiled Handlebars function */
 const UC_TEMPLATE_CACHE = {};
 
+// Inject bundled templates ngay sau khi cache được khởi tạo (hỗ trợ offline file://)
+if (typeof ucInjectBundledTemplates === 'function') {
+  ucInjectBundledTemplates();
+}
+
 /**
  * Đăng ký các Handlebars helpers dùng trong template.
  * Gọi một lần trước khi compile template.
@@ -1203,6 +1325,10 @@ function ucRegisterHandlebarsHelpers() {
     return new Handlebars.SafeString(ucPad(addr != null ? addr : ''));
   });
   Handlebars.registerHelper('eq', function(a, b) { return a === b; });
+  // padStart2(n) → '01', '02', ... '09', '10', '11', ...
+  Handlebars.registerHelper('padStart2', function(n) {
+    return String((n != null ? Number(n) : 0) + 1).padStart(2, '0');
+  });
   Handlebars.__ucHelpersRegistered = true;
 }
 
@@ -1243,6 +1369,7 @@ function ucLoadTemplates() {
     });
 
   const devicePartials = [
+    { name: 'step_body',       file: 'step-body.hbs' },
     { name: 'device_cylinder', file: 'devices/cylinder.hbs' },
     { name: 'device_servo',    file: 'devices/servo.hbs' },
     { name: 'device_motor',    file: 'devices/motor.hbs' },
@@ -1268,18 +1395,10 @@ function ucLoadTemplates() {
 function ucTemplatesReady() {
   return !!(UC_TEMPLATE_CACHE.error && UC_TEMPLATE_CACHE.manual &&
             UC_TEMPLATE_CACHE.origin && UC_TEMPLATE_CACHE.auto &&
-            UC_TEMPLATE_CACHE.output);
+            (UC_TEMPLATE_CACHE['main-output'] || UC_TEMPLATE_CACHE.output));
 }
 
-/**
- * Áp dụng một template đã cache lên templateCtx.
- * Trả về mảng string (lines) như các hàm cgUCGenerate*.
- * Collapse consecutive blank lines (giữ nhiều nhất 1 dòng trắng liên tiếp).
- */
-function ucApplyTemplate(name, tplCtx) {
-  const tmpl = UC_TEMPLATE_CACHE[name];
-  if (!tmpl) return null;
-  const text = tmpl(tplCtx);
+function ucCollapseRenderedLines(text) {
   const raw = text.split('\n').map(function(l) { return l.trimEnd(); });
   const result = [];
   let prevBlank = false;
@@ -1290,6 +1409,40 @@ function ucApplyTemplate(name, tplCtx) {
     prevBlank = blank;
   }
   return result;
+}
+
+/**
+ * Áp dụng một template đã cache lên templateCtx.
+ * Trả về mảng string (lines) như các hàm cgUCGenerate*.
+ * Collapse consecutive blank lines (giữ nhiều nhất 1 dòng trắng liên tiếp).
+ */
+function ucApplyTemplate(name, tplCtx) {
+  const tmpl = UC_TEMPLATE_CACHE[name];
+  if (!tmpl) return null;
+  try {
+    const text = tmpl(tplCtx);
+    return ucCollapseRenderedLines(text);
+  } catch (e) {
+    console.warn('[unit-config] template render error for "' + name + '":', e);
+    return null; // fallback to JS generator via the || chain in cgGenerateFromUnitConfig
+  }
+}
+
+function ucApplyTemplateStrict(name, tplCtx) {
+  const tmpl = UC_TEMPLATE_CACHE[name];
+  if (!tmpl) {
+    const missingErr = new Error('Missing compiled template "' + name + '".');
+    missingErr.templateName = name;
+    throw missingErr;
+  }
+  try {
+    return ucCollapseRenderedLines(tmpl(tplCtx));
+  } catch (e) {
+    const renderErr = new Error(e && e.message ? e.message : String(e));
+    renderErr.templateName = name;
+    renderErr.cause = e;
+    throw renderErr;
+  }
 }
 
 // ─── Helper: tính stack instruction cho ALT block (Manual) ────────────────────
@@ -1366,8 +1519,10 @@ function cgUCBuildTemplateContext(ctx) {
     return Object.assign({}, step, {
       actionLabel:     ucComputeActionLabel(step),
       isFirst:         i === 0,
-      prevCmpAddr:     i > 0 ? ctx.originSteps[i - 1].cmpAddr : '',
-      prevActionLabel: i > 0 ? ucComputeActionLabel(ctx.originSteps[i - 1]) : '',
+      // prevCmpAddr and prevActionLabel are already resolved via inTrans in
+      // buildComputedSteps — use them directly instead of positional lookup.
+      prevCmpAddr:     step.prevCmpAddr     || '',
+      prevActionLabel: step.prevActionLabel || '',
     });
   });
   const lastOriginStep = originSteps.length > 0
@@ -1379,13 +1534,14 @@ function cgUCBuildTemplateContext(ctx) {
       return Object.assign({}, step, {
         actionLabel:     ucComputeActionLabel(step),
         isFirst:         i === 0,
-        prevCmpAddr:     i > 0 ? flow.steps[i - 1].cmpAddr : '',
-        prevActionLabel: i > 0 ? ucComputeActionLabel(flow.steps[i - 1]) : '',
+        // prevCmpAddr and prevActionLabel are already resolved via inTrans in
+        // buildComputedSteps — use them directly instead of positional lookup.
+        prevCmpAddr:     step.prevCmpAddr     || '',
+        prevActionLabel: step.prevActionLabel || '',
       });
     });
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
-    const resetEndNum  = flow.baseNum + Math.max(15, flow.steps.length * 2 + 6);
-    const resetEndAddr = '@MR' + String(resetEndNum).padStart(3, '0');
+    const resetEndAddr = ucResetEndAddr(flow.baseNum, flow.steps.length, ctx.addressMode);
     return Object.assign({}, flow, {
       steps:        steps,
       lastStep:     lastStep,
@@ -1407,11 +1563,11 @@ function cgUCBuildTemplateContext(ctx) {
     const kind = dev.kind || 'cylinder';
     if (kind === 'cylinder') {
       const enriched = cylinderMap[dev.id];
-      if (enriched) return Object.assign({ kind: 'cylinder' }, enriched);
-      return Object.assign({ kind: 'cylinder' }, dev);
+      if (enriched) return Object.assign({ kind: 'cylinder', unit: u }, enriched);
+      return Object.assign({ kind: 'cylinder', unit: u }, dev);
     }
     // servo / motor: pass through raw JSON props with kind tag
-    return Object.assign({ kind: kind }, dev);
+    return Object.assign({ kind: kind, unit: u }, dev);
   });
 
   return {
@@ -1436,6 +1592,11 @@ function cgUCBuildTemplateContext(ctx) {
 // ─── Tự động tải templates khi page load ─────────────────────────────────────
 if (typeof window !== 'undefined') {
   window.addEventListener('load', function() {
+    // Nếu templates-bundle.js đã inject vào cache (chạy offline qua file://)
+    // thì bỏ qua fetch để tránh lỗi CORS
+    if (ucTemplatesReady()) {
+      return;
+    }
     ucLoadTemplates().catch(function(err) {
       console.warn('[unit-config] Handlebars templates not loaded (fallback to JS generators):', err.message);
     });
@@ -1444,17 +1605,20 @@ if (typeof window !== 'undefined') {
 
 // ─── Entry point: sinh toàn bộ code IL từ JSON config + canvas diagrams ───────
 // cylinderTypes không còn bắt buộc — giữ tham số để tương thích ngược với UI cũ.
-function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
+// selectedUnitId: nếu truyền vào, chỉ lấy diagrams của unit đó từ canvas
+function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedUnitId, options) {
   if (!unitConfig) {
     return { code: '; ERROR: unitConfig chưa được load.', stats: 'Error' };
   }
+  const strictTemplates = !!(options && options.strictTemplates);
+  const addressMode     = (options && options.addressMode) || 'linear';
 
   // v3: kiểm tra schema version để hiển thị đúng trong header
   const schemaVer = unitConfig.unit?.overrides != null
     ? 'v3'
     : (unitConfig.devices != null ? 'v3' : 'v2');
 
-  const ctx = cgUCBuildContext(unitConfig);
+  const ctx = cgUCBuildContext(unitConfig, selectedUnitId, { addressMode });
   const pr  = profile || PLC_PROFILES['kv-5500'];
   const timestamp = new Date().toLocaleString('vi-VN');
   const unitLabel = (ctx.unit.label || '').padEnd(39);
@@ -1508,15 +1672,36 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile) {
   // 5 sections: dùng Handlebars templates nếu đã load, fallback sang JS generators
   if (ucTemplatesReady()) {
     const tplCtx = cgUCBuildTemplateContext(ctx);
-    lines.push(...(ucApplyTemplate('error',  tplCtx) || cgUCGenerateError(ctx)));
-    lines.push(...(ucApplyTemplate('manual', tplCtx) || cgUCGenerateManual(ctx)));
-    lines.push(...(ucApplyTemplate('origin', tplCtx) || cgUCGenerateOrigin(ctx)));
-    lines.push(...(ucApplyTemplate('auto',   tplCtx) || cgUCGenerateAuto(ctx)));
-    // Prefer modular main-output (dispatches to device partials) over legacy output
-    lines.push(...(ucApplyTemplate('main-output', tplCtx) ||
-                   ucApplyTemplate('output',      tplCtx) ||
-                   cgUCGenerateOutput(ctx)));
+    if (strictTemplates) {
+      lines.push(...ucApplyTemplateStrict('error', tplCtx));
+      lines.push(...ucApplyTemplateStrict('manual', tplCtx));
+      lines.push(...ucApplyTemplateStrict('origin', tplCtx));
+      lines.push(...ucApplyTemplateStrict('auto', tplCtx));
+      if (UC_TEMPLATE_CACHE['main-output']) {
+        lines.push(...ucApplyTemplateStrict('main-output', tplCtx));
+      } else if (UC_TEMPLATE_CACHE.output) {
+        lines.push(...ucApplyTemplateStrict('output', tplCtx));
+      } else {
+        const outputErr = new Error('Missing output template for Unit Config generation.');
+        outputErr.templateName = 'main-output';
+        throw outputErr;
+      }
+    } else {
+      lines.push(...(ucApplyTemplate('error',  tplCtx) || cgUCGenerateError(ctx)));
+      lines.push(...(ucApplyTemplate('manual', tplCtx) || cgUCGenerateManual(ctx)));
+      lines.push(...(ucApplyTemplate('origin', tplCtx) || cgUCGenerateOrigin(ctx)));
+      lines.push(...(ucApplyTemplate('auto',   tplCtx) || cgUCGenerateAuto(ctx)));
+      // Prefer modular main-output (dispatches to device partials) over legacy output
+      lines.push(...(ucApplyTemplate('main-output', tplCtx) ||
+                     ucApplyTemplate('output',      tplCtx) ||
+                     cgUCGenerateOutput(ctx)));
+    }
   } else {
+    if (strictTemplates) {
+      const bundleErr = new Error('Unit Config template bundle is not ready.');
+      bundleErr.templateName = 'bundle';
+      throw bundleErr;
+    }
     lines.push(...cgUCGenerateError(ctx));
     lines.push(...cgUCGenerateManual(ctx));
     lines.push(...cgUCGenerateOrigin(ctx));
