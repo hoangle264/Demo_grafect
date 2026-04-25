@@ -137,13 +137,24 @@ function ucEnsureCylinderDeviceType() {
     project.devices.push(dt);
     if (typeof saveProject === 'function') saveProject();
   } else {
-    // Bổ sung signal còn thiếu (backward compat nếu đã có Cylinder cũ)
+    // Normalize signal IDs: nếu signal đã có nhưng ID không phải cyl_*, match theo name và cập nhật ID
+    // rồi bổ sung signal còn thiếu (backward compat nếu đã có Cylinder cũ)
     if (!dt.signals) dt.signals = [];
     UC_CYLINDER_DEVICE_DEF.signals.forEach(function(defSig) {
-      if (!dt.signals.find(function(s) { return s.id === defSig.id; })) {
-        dt.signals.push(Object.assign({}, defSig));
+      var byId = dt.signals.find(function(s) { return s.id === defSig.id; });
+      if (!byId) {
+        // Tìm theo tên (case-insensitive) để normalize ID → cyl_*
+        var byName = dt.signals.find(function(s) {
+          return s.name.toLowerCase() === defSig.name.toLowerCase();
+        });
+        if (byName) {
+          byName.id = defSig.id; // cập nhật ID sang canonical cyl_*
+        } else {
+          dt.signals.push(Object.assign({}, defSig));
+        }
       }
     });
+    if (typeof saveProject === 'function') saveProject();
   }
   return dt;
 }
@@ -265,24 +276,53 @@ function ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals) {
  *   VD: { "Up_SOL": "LR000", "Down_SOL": "LR001", "Up_SNS": "MR1000", ... }
  */
 function ucScanSignalsFromVars(unitDiagsVars, deviceId) {
+  // Map tên signal chuẩn → cyl_* ID (dùng để fallback khi devType.signals dùng IDs lạ)
+  var CYL_NAME_TO_ID = {
+    'coila':'cyl_coilA','coilb':'cyl_coilB',
+    'lsh':'cyl_lsh','lsl':'cyl_lsl',
+    'locka':'cyl_lockA','lockb':'cyl_lockB',
+    'dissnsH':'cyl_disSnsH','disSnsH':'cyl_disSnsH',
+    'dissnsL':'cyl_disSnsL','disSnsL':'cyl_disSnsL',
+    'disnsh':'cyl_disSnsH','disnsl':'cyl_disSnsL',
+    'errora':'cyl_errA','errorb':'cyl_errB',
+    'erra':'cyl_errA','errb':'cyl_errB',
+    'state':'cyl_state','hmiman':'cyl_hmiMan','hmimanbtn':'cyl_hmiMan'
+  };
+  var CYL_ID_TO_NAME = {};
+  UC_CYLINDER_DEVICE_DEF.signals.forEach(function(s){ CYL_ID_TO_NAME[s.id] = s.name; });
+
   const result = {};
   (unitDiagsVars || []).forEach(function(v) {
     if (v.label !== deviceId) return;
     if (!v.signalAddresses) return;
+    const sAddr = v.signalAddresses;
+
     // Lấy device type definition
     const devType = (typeof project !== 'undefined' && project.devices || [])
       .find(function(d) { return d.name === (v.format || ''); });
+
     if (!devType) {
-      // Fallback: nếu không có devType nhưng có signalAddresses, lưu theo key
-      Object.assign(result, v.signalAddresses);
+      // Fallback: không có devType — nếu keys đã là cyl_*, map sang signal name
+      Object.keys(sAddr).forEach(function(key) {
+        if (!sAddr[key]) return;
+        if (CYL_ID_TO_NAME[key]) result[CYL_ID_TO_NAME[key]] = sAddr[key];
+        else result[key] = sAddr[key];
+      });
       return;
     }
+
     (devType.signals || []).forEach(function(sig) {
-      const addr = v.signalAddresses[sig.id];
+      // 1. Thử direct ID match (cyl_* IDs → đúng)
+      var addr = sAddr[sig.id] || '';
+      // 2. Fallback: nếu devType dùng IDs lạ (sig-xxx-timestamp), tìm canonical cyl_* ID theo tên
+      if (!addr) {
+        var canonicalId = CYL_NAME_TO_ID[(sig.name || '').toLowerCase()];
+        if (canonicalId) addr = sAddr[canonicalId] || '';
+      }
       if (addr) result[sig.name] = addr;
     });
   });
-  return result;  // { "Up_SOL": "LR000", "Down_SOL": "LR001", ... }
+  return result;  // { "CoilA": "LR000", "LSH": "MR1000", ... }
 }
 
 /**
@@ -328,6 +368,9 @@ function ucNormalizeDeviceList(unitConfig) {
  */
 function ucBuildWarnings(ctx) {
   const warns = [];
+  if (ctx.unitNameMismatchWarning) {
+    warns.push(ctx.unitNameMismatchWarning);
+  }
   if (!ctx.originSteps.length) {
     warns.push('WARNING: Không tìm thấy diagram Origin (Mode=Origin) — Origin section sẽ trống.');
   }
@@ -348,11 +391,27 @@ function ucBuildWarnings(ctx) {
   return warns;
 }
 
-// ─── Load JSON file qua FileReader ───────────────────────────────────────────
-function cgUCLoadFile(inputId, onSuccess) {
+function ucGetUnitNameMismatchWarning(selectedUnitId, unitLabel) {
+  const units = (typeof project !== 'undefined' && project.units) || [];
+  const unitConfigs = (typeof project !== 'undefined' && project.unitConfig) || {};
+  const csvUnitLabels = Object.keys(unitConfigs).filter(Boolean);
+  if (!selectedUnitId || !csvUnitLabels.length) return '';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  ucBuildSyntheticConfig()
+  const unitObj = units.find(function(u) { return u.id === selectedUnitId; });
+  if (!unitObj) return '';
+
+  const treeUnitName = (unitObj.name || unitObj.id || '').trim();
+  const effectiveUnitLabel = String(unitLabel || '').trim();
+  if (!treeUnitName) return '';
+
+  if (csvUnitLabels.includes(treeUnitName) || (effectiveUnitLabel && csvUnitLabels.includes(effectiveUnitLabel))) {
+    return '';
+  }
+
+  return 'WARNING: Tên Unit trong Project Tree ("' + treeUnitName + '") không trùng với tên Unit trong Global Variables / Unit CSV (' + csvUnitLabels.join(', ') + '). Kiểm tra lại mapping unit trước khi dùng code output.';
+}
+
+
 //  Tạo unitConfig object tổng hợp từ project.unitConfig (lưu bởi Excel import)
 //  để dùng khi user không load JSON file.
 //  Format output giống unit-config.json v3.
@@ -484,6 +543,7 @@ function ucFindFirstSignalAddress(signalMap, candidates) {
 function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
   const addressMode = (options && options.addressMode) || 'linear'; // 'linear' | 'block'
+  const unitNameMismatchWarning = ucGetUnitNameMismatchWarning(selectedUnitId, u && u.label);
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
   const flags  = ucResolveUnitFlags(u);
@@ -544,6 +604,12 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   function buildComputedSteps(seqData, baseNum) {
     if (!seqData) return [];
     const { sequence, vars, s } = seqData;
+    // Merge diagram vars + project.excelVars for device lookups.
+    // Diagram vars come first → they take priority over Excel-imported vars.
+    const _excelVars = (typeof project !== 'undefined' && project.excelVars) ? project.excelVars : [];
+    const lookupVars = (vars || []).concat(_excelVars.filter(function(ev) {
+      return !(vars || []).some(function(dv) { return dv.label === ev.label; });
+    }));
     // Graph data needed for predecessor lookup via inTrans
     const seqConnections = (s && s.connections) || [];
     const seqSteps       = (s && s.steps)       || [];
@@ -565,7 +631,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
             const dotIdx   = varStr.indexOf('.');
             const devLabel = varStr.substring(0, dotIdx);
             const sigName  = varStr.substring(dotIdx + 1);
-            const v = (vars || []).find(function(x) { return x.label === devLabel; });
+            const v = lookupVars.find(function(x) { return x.label === devLabel; });
             if (v) {
               const devType = (typeof project !== 'undefined' && project.devices || [])
                 .find(function(d) { return d.name === (v.format || ''); });
@@ -581,7 +647,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
             }
           }
           // Fallback: cgResolveSignalInfo (cho label không có dot hoặc PLC address)
-          const info = cgResolveSignalInfo(varStr, vars);
+          const info = cgResolveSignalInfo(varStr, lookupVars);
           return info ? {
             variable:    varStr,
             physAddr:    info.physAddr,
@@ -606,7 +672,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
           const dotIdx   = cond.indexOf('.');
           const devLabel = cond.substring(0, dotIdx);
           const sigName  = cond.substring(dotIdx + 1);
-          const v = (vars || []).find(function(x) { return x.label === devLabel; });
+          const v = lookupVars.find(function(x) { return x.label === devLabel; });
           if (v && v.signalAddresses) {
             const devType = (typeof project !== 'undefined' && project.devices || [])
               .find(function(d) { return d.name === (v.format || ''); });
@@ -619,7 +685,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         }
         // Fallback: cgResolveSignalInfo (cho PLC address literals, plain labels)
         if (!sensor) {
-          const info = cgResolveSignalInfo(cond, vars);
+          const info = cgResolveSignalInfo(cond, lookupVars);
           if (info && info.physAddr && !cond.includes('.')) {
             sensor      = info.physAddr;
             sensorLabel = info.devLabel && info.sigName ? info.devLabel + '.' + info.sigName : cond;
@@ -649,7 +715,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
               const dotIdx   = cond.indexOf('.');
               const devLabel = cond.substring(0, dotIdx);
               const sigName  = cond.substring(dotIdx + 1);
-              const v = (vars || []).find(function(x) { return x.label === devLabel; });
+              const v = lookupVars.find(function(x) { return x.label === devLabel; });
               if (v && v.signalAddresses) {
                 const devType = (typeof project !== 'undefined' && project.devices || [])
                   .find(function(d) { return d.name === (v.format || ''); });
@@ -657,7 +723,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
                 if (sig && v.signalAddresses[sig.id]) extraAddr = v.signalAddresses[sig.id];
               }
             } else {
-              const info = cgResolveSignalInfo(cond, vars);
+              const info = cgResolveSignalInfo(cond, lookupVars);
               if (info && info.physAddr) extraAddr = info.physAddr;
               else extraAddr = cond;
             }
@@ -866,9 +932,14 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
           const dt = (typeof project !== 'undefined' && project.devices || [])
             .find(function(d) { return d.name === (vv.format || ''); });
           const sg = (dt && dt.signals || []).find(function(s) { return s.name === sName; });
-          if (sg && vv.signalAddresses[sg.id]) {
-            sensorDirA = vv.signalAddresses[sg.id];
-            return true;
+          if (sg) {
+            var addr = vv.signalAddresses[sg.id] || '';
+            // Fallback: canonical cyl_* ID
+            if (!addr) {
+              var cSig = UC_CYLINDER_DEVICE_DEF.signals.find(function(cs){ return cs.name.toLowerCase()===sName.toLowerCase(); });
+              if (cSig) addr = vv.signalAddresses[cSig.id] || '';
+            }
+            if (addr) { sensorDirA = addr; return true; }
           }
           return false;
         });
@@ -884,9 +955,13 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
           const dt = (typeof project !== 'undefined' && project.devices || [])
             .find(function(d) { return d.name === (vv.format || ''); });
           const sg = (dt && dt.signals || []).find(function(s) { return s.name === sName; });
-          if (sg && vv.signalAddresses[sg.id]) {
-            sensorDirB = vv.signalAddresses[sg.id];
-            return true;
+          if (sg) {
+            var addr = vv.signalAddresses[sg.id] || '';
+            if (!addr) {
+              var cSig = UC_CYLINDER_DEVICE_DEF.signals.find(function(cs){ return cs.name.toLowerCase()===sName.toLowerCase(); });
+              if (cSig) addr = vv.signalAddresses[cSig.id] || '';
+            }
+            if (addr) { sensorDirB = addr; return true; }
           }
           return false;
         });
@@ -1013,8 +1088,9 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
     stationFlows: stationFlows,
     deviceList:   deviceList,
     addressMode:  addressMode,
+    unitNameMismatchWarning: unitNameMismatchWarning,
     // v3: expose warnings để entry point chèn vào output
-    warnings:     ucBuildWarnings({ unit, cylinders, originSteps, stationFlows })
+    warnings:     ucBuildWarnings({ unit, cylinders, originSteps, stationFlows, unitNameMismatchWarning })
   };
 }
 

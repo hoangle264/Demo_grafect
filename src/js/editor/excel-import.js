@@ -98,6 +98,23 @@ function eiParseCylinderCSV(rows) {
   const vars   = [];
   const errors = [];
 
+  function getCylinderCsvAddrBySignalName(name, cols) {
+    const key = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key === 'lsh') return cols[1] || '';
+    if (key === 'lsl') return cols[2] || '';
+    if (key === 'locka') return cols[3] || '';
+    if (key === 'lockb') return cols[4] || '';
+    if (key === 'dissnslsh' || key === 'dissnsh') return cols[5] || '';
+    if (key === 'dissnslsl' || key === 'dissnsl') return cols[6] || '';
+    if (key === 'state') return cols[7] || '';
+    if (key === 'errora' || key === 'erra') return cols[8] || '';
+    if (key === 'errorb' || key === 'errb') return cols[9] || '';
+    if (key === 'coila') return cols[10] || '';
+    if (key === 'coilb') return cols[11] || '';
+    if (key === 'hmimanbtn' || key === 'hmiman') return '';
+    return '';
+  }
+
   rows.forEach(function(cols, rowIdx) {
     // Bỏ qua dòng header (nếu col[0] không phải địa chỉ và col[1] không phải KV addr)
     if (rowIdx === 0 && cols.length > 1 && !EI_KV_ADDR_RE.test(cols[1])) return;
@@ -122,6 +139,17 @@ function eiParseCylinderCSV(rows) {
       cyl_hmiMan:  '',       // không có trong CSV — tính theo index
     };
 
+    // Nếu Struct Data "Cylinder" đang dùng signal IDs khác canonical cyl_*
+    // thì map thêm theo name để các cột hiển thị/đồng bộ đúng trong Global Vars.
+    const cylinderType = (project.devices || []).find(function(d) { return d && d.name === 'Cylinder'; });
+    if (cylinderType && Array.isArray(cylinderType.signals)) {
+      cylinderType.signals.forEach(function(sig) {
+        const byNameAddr = getCylinderCsvAddrBySignalName(sig && sig.name, cols);
+        if (!sig || !sig.id) return;
+        if (byNameAddr) signalMap[sig.id] = byNameAddr;
+      });
+    }
+
     // Validate từng địa chỉ
     let hasError = false;
     Object.keys(signalMap).forEach(function(sigId) {
@@ -139,7 +167,7 @@ function eiParseCylinderCSV(rows) {
         address:        '',
         comment:        'Excel import',
         signalAddresses: signalMap,
-        _sigExpanded:   false,
+        _sigExpanded:   true,
         _source:        'excel'
       });
     }
@@ -219,6 +247,62 @@ function eiParseUnitCSV(rows) {
 }
 
 /**
+ * Parse CSV theo Struct Data đã chọn.
+ * Col 0 = label instance, Col 1..N = address theo thứ tự signals trong struct.
+ * @param {string[][]} rows
+ * @param {string} structTypeName
+ * @returns {{ vars: object[], errors: string[] }}
+ */
+function eiParseStructCSV(rows, structTypeName) {
+  const vars = [];
+  const errors = [];
+  const structType = (project.devices || []).find(function(d) { return d.name === structTypeName; });
+  const signals = (structType && structType.signals) || [];
+
+  if (!structType) {
+    return { vars: [], errors: ['Không tìm thấy Struct Data "' + structTypeName + '".'] };
+  }
+  if (!signals.length) {
+    return { vars: [], errors: ['Struct Data "' + structTypeName + '" chưa có signal để map CSV.'] };
+  }
+
+  rows.forEach(function(cols, rowIdx) {
+    if (rowIdx === 0 && cols.length > 1 && !EI_KV_ADDR_RE.test(cols[1])) return;
+    if (cols.length < 1 || !cols[0].trim()) return;
+
+    const id = cols[0].trim();
+    if (!id) return;
+
+    const signalMap = {};
+    let hasError = false;
+
+    signals.forEach(function(sig, i) {
+      const sigId = sig.id || ('sig-' + i);
+      const addr = cols[i + 1] || '';
+      signalMap[sigId] = addr;
+      if (addr && !eiValidateAddr(addr)) {
+        errors.push('Dòng ' + (rowIdx + 1) + ' [' + id + '.' + sigId + ']: địa chỉ không hợp lệ "' + addr + '"');
+        hasError = true;
+      }
+    });
+
+    if (!hasError) {
+      vars.push({
+        label: id,
+        format: structTypeName,
+        address: '',
+        comment: 'Excel import',
+        signalAddresses: signalMap,
+        _sigExpanded: true,
+        _source: 'excel'
+      });
+    }
+  });
+
+  return { vars: vars, errors: errors };
+}
+
+/**
  * eiDetectCSVType(rows)
  * Phát hiện tự động loại CSV: 'cylinder' nếu ≥12 cột; 'unit' nếu ≥11 cột.
  * Dùng dòng data đầu tiên (bỏ qua header).
@@ -241,13 +325,14 @@ function eiDetectCSVType(rows) {
  * @param {string} csvType  — 'cylinder' | 'unit' | 'auto'
  * @returns {{ ok: boolean, message: string, added: number }}
  */
-function eiImportFromCSVText(csvText, csvType) {
+function eiImportFromCSVText(csvText, csvType, options) {
   const rows = eiParseCSV(csvText);
   if (!rows.length) {
     return { ok: false, message: 'File CSV trống hoặc không đọc được.', added: 0 };
   }
 
-  const detectedType = csvType === 'auto' ? eiDetectCSVType(rows) : csvType;
+  const selectedStructType = (options && options.structType) || '';
+  const detectedType = csvType || 'struct';
 
   if (detectedType === 'cylinder') {
     // Đảm bảo device type Cylinder đã tồn tại
@@ -271,6 +356,9 @@ function eiImportFromCSVText(csvText, csvType) {
       else project.excelVars.push(v);
     });
 
+    if (typeof syncStructDataFromProjectData === 'function') {
+      syncStructDataFromProjectData();
+    }
     if (typeof saveProject === 'function') saveProject();
     return { ok: true, message: 'Import thành công ' + vars.length + ' cylinder.', added: vars.length };
 
@@ -288,11 +376,42 @@ function eiImportFromCSVText(csvText, csvType) {
       project.unitConfig[cfg.label] = cfg;
     });
 
+    if (typeof syncStructDataFromProjectData === 'function') {
+      syncStructDataFromProjectData();
+    }
     if (typeof saveProject === 'function') saveProject();
     return { ok: true, message: 'Import thành công ' + configs.length + ' unit station.', added: configs.length };
 
+  } else if (detectedType === 'struct') {
+    if (!selectedStructType) {
+      return { ok: false, message: 'Vui lòng chọn Struct Data trước khi import.', added: 0 };
+    }
+    const parsed = eiParseStructCSV(rows, selectedStructType);
+    const vars = parsed.vars;
+    const errors = parsed.errors;
+
+    if (errors.length) {
+      return { ok: false, message: 'Lỗi validate:\n' + errors.join('\n'), added: 0 };
+    }
+    if (!vars.length) {
+      return { ok: false, message: 'Không tìm thấy dòng dữ liệu hợp lệ cho Struct Data "' + selectedStructType + '".', added: 0 };
+    }
+
+    if (!project.excelVars) project.excelVars = [];
+    vars.forEach(function(v) {
+      const idx = project.excelVars.findIndex(function(e) { return e.label === v.label; });
+      if (idx >= 0) project.excelVars[idx] = v;
+      else project.excelVars.push(v);
+    });
+
+    if (typeof syncStructDataFromProjectData === 'function') {
+      syncStructDataFromProjectData();
+    }
+    if (typeof saveProject === 'function') saveProject();
+    return { ok: true, message: 'Import thành công ' + vars.length + ' instance cho Struct Data "' + selectedStructType + '".', added: vars.length };
+
   } else {
-    return { ok: false, message: 'Không nhận dạng được loại CSV. Cần ≥12 cột (Cylinder) hoặc ≥11 cột (Unit Station).', added: 0 };
+    return { ok: false, message: 'Chế độ import hiện tại chỉ hỗ trợ Struct Data. Vui lòng chọn Struct Data type để import.', added: 0 };
   }
 }
 
@@ -307,6 +426,10 @@ function showExcelImportModal() {
 
   const cylinderCount = (project.excelVars || []).filter(function(v) { return v.format === 'Cylinder'; }).length;
   const unitCount     = Object.keys(project.unitConfig || {}).length;
+  const structTypes = (project.devices || []).map(function(d) { return d.name; });
+  const structOptions = structTypes.length
+    ? structTypes.map(function(name) { return '<option value="' + name + '">' + name + '</option>'; }).join('')
+    : '<option value="">(Chưa có Struct Data)</option>';
 
   el.innerHTML = `
     <div class="modal" style="min-width:520px;max-width:90vw;max-height:88vh;
@@ -332,20 +455,13 @@ function showExcelImportModal() {
 
       <!-- Content -->
       <div style="padding:16px 20px;flex:1;overflow-y:auto;">
-        <!-- CSV Type selector -->
-        <div style="margin-bottom:14px;">
-          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">LOẠI CSV</div>
-          <div style="display:flex;gap:10px;">
-            <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;">
-              <input type="radio" name="ei-csv-type" value="auto" checked> Tự động nhận dạng
-            </label>
-            <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;">
-              <input type="radio" name="ei-csv-type" value="cylinder"> Cylinder (12 cột)
-            </label>
-            <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;">
-              <input type="radio" name="ei-csv-type" value="unit"> Unit Station (11 cột)
-            </label>
-          </div>
+        <div id="ei-struct-wrap" style="margin-bottom:14px;display:;">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">STRUCT DATA TYPE</div>
+          <select id="ei-struct-type"
+            style="width:100%;font-size:10px;color:var(--cyan);background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 8px;">
+            ${structOptions}
+          </select>
+          <div style="margin-top:4px;font-size:9px;color:var(--text3);">CSV: Col0 = Label, Col1..N map theo thứ tự signal của Struct Data đã chọn.</div>
         </div>
 
         <!-- File picker -->
@@ -369,8 +485,7 @@ function showExcelImportModal() {
 
         <!-- Schema hint -->
         <div style="font-size:9px;color:var(--text3);line-height:1.6;">
-          <b style="color:var(--cyan);">Cylinder CSV</b> (12 cột): ID | LSH | LSL | LockA | LockB | DisSnsLSH | DisSnsLSL | State | ErrorA | ErrorB | CoilA | CoilB<br>
-          <b style="color:var(--cyan);">Unit Station CSV</b> (11 cột): UnitName | UnitIndex | OriginFlag | AutoFlag | ManualFlag | ErrorFlag | Start | Stop | Reset | EStop | HomeDone
+          <b style="color:var(--cyan);">Struct Data CSV</b>: Label | Signal1 | Signal2 | ... (theo thứ tự signal của struct đã chọn)
         </div>
       </div>
 
@@ -410,9 +525,12 @@ function eiPreviewFile(inputEl) {
 
     // Auto-detect và hiển thị hint
     const rows = eiParseCSV(_eiPendingText);
-    const det = eiDetectCSVType(rows);
     const stat = document.getElementById('ei-stat');
-    if (stat) stat.textContent = 'Phát hiện: ' + (det === 'cylinder' ? 'Cylinder CSV' : det === 'unit' ? 'Unit Station CSV' : 'Chưa nhận ra loại') + '  (' + rows.length + ' dòng)';
+    if (stat) {
+      const st = document.getElementById('ei-struct-type');
+      const stName = st ? st.value : '';
+      stat.textContent = 'Mode: Struct Data' + (stName ? ' (' + stName + ')' : '') + '  (' + rows.length + ' dòng)';
+    }
   };
   reader.readAsText(file);
 }
@@ -420,9 +538,10 @@ function eiPreviewFile(inputEl) {
 // ─── Thực hiện import ─────────────────────────────────────────────────────────
 function eiDoImport() {
   if (!_eiPendingText) return;
-  const typeRadio = document.querySelector('#modal-excel-import input[name="ei-csv-type"]:checked');
-  const csvType   = typeRadio ? typeRadio.value : 'auto';
-  const result    = eiImportFromCSVText(_eiPendingText, csvType);
+  const csvType = 'struct';
+  const structTypeSel = document.getElementById('ei-struct-type');
+  const selectedStructType = structTypeSel ? structTypeSel.value : '';
+  const result    = eiImportFromCSVText(_eiPendingText, csvType, { structType: selectedStructType });
 
   const stat = document.getElementById('ei-stat');
   if (stat) stat.textContent = result.message;

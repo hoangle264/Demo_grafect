@@ -7,6 +7,15 @@ function renderTabs() {
   const bar = document.getElementById('tabs-bar');
   bar.innerHTML = '';
   openTabs.forEach(t => {
+    if(t.id === VARS_TAB_ID) {
+      const tab = document.createElement('div');
+      tab.className = 'tab' + (activeDiagramId===VARS_TAB_ID?' active':'');
+      tab.dataset.id = VARS_TAB_ID;
+      tab.innerHTML = `<span class="tab-name">📋 Variables</span><button class="tab-close" onclick="closeTab('${VARS_TAB_ID}',event)">×</button>`;
+      tab.addEventListener('click', e=>{ if(!e.target.classList.contains('tab-close')) openVarsTab(); });
+      bar.appendChild(tab);
+      return;
+    }
     const diag = project.diagrams.find(d=>d.id===t.id);
     if (!diag) return;
     const tab = document.createElement('div');
@@ -42,6 +51,17 @@ function renderTree() {
   // ── Devices section (global device type declarations) ──
   const devSection = makeDevicesSection();
   body.appendChild(devSection);
+
+  // ── Variables (global Excel/imported vars) ──
+  const varsCount = (project.excelVars||[]).length;
+  const varsItem = document.createElement('div');
+  varsItem.className = 'tree-item';
+  varsItem.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;cursor:pointer;font-size:10px;color:var(--text2);border-top:1px solid var(--border);';
+  varsItem.innerHTML = `<span style="font-size:11px;">📋</span><span style="flex:1;">Variables</span><span style="font-size:9px;color:var(--text3);background:var(--s2);padding:1px 5px;border-radius:8px;">${varsCount}</span>`;
+  varsItem.addEventListener('mouseenter', ()=>{ varsItem.style.background='var(--s2)'; });
+  varsItem.addEventListener('mouseleave', ()=>{ varsItem.style.background=''; });
+  varsItem.addEventListener('click', ()=>openVarsTab());
+  body.appendChild(varsItem);
 
   // ── Units ──
   project.units.forEach(u=>{
@@ -225,10 +245,10 @@ function makeDevicesSection() {
   head.innerHTML = `
     <span class="tree-dev-toggle ${isOpen?'':'closed'}">▾</span>
     <span style="font-size:11px;margin:0 4px;">🔩</span>
-    <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">DEVICES</span>
+    <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">STRUCT DATA</span>
     <span style="font-size:8px;color:var(--text3);margin-right:4px;">${totalTypes}</span>
-    <button class="tree-dev-add-btn" onclick="addStandardDeviceTemplates();event.stopPropagation()" title="Add standard device templates (CY_Double_Act, CY_Single_Act, Motor_FwdRev)" style="border-color:#a78bfa;color:#a78bfa;">📦</button>
-    <button class="tree-dev-add-btn" onclick="openDeviceTypeModal(null);event.stopPropagation()" title="Add device type">⊕</button>`;
+    <button class="tree-dev-add-btn" onclick="addStandardDeviceTemplates();event.stopPropagation()" title="Add standard struct data templates (CY_Double_Act, CY_Single_Act, Motor_FwdRev)" style="border-color:#a78bfa;color:#a78bfa;">📦</button>
+    <button class="tree-dev-add-btn" onclick="openDeviceTypeModal(null);event.stopPropagation()" title="Add Struct Data">⊕</button>`;
 
   const body = document.createElement('div');
   body.className = 'tree-devices-body' + (isOpen?'':' hidden');
@@ -255,7 +275,7 @@ function renderDevicesList(container) {
     const e=document.createElement('div');
     e.className='tree-dev-empty';
     e.style.cssText='padding:6px 12px;font-size:9px;color:var(--text3);font-style:italic;';
-    e.textContent='no device types defined';
+    e.textContent='no struct data defined';
     container.appendChild(e);
     return;
   }
@@ -346,12 +366,12 @@ function openDeviceTypeModal(devId) {
     <div class="modal" style="min-width:640px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
       <div style="padding:12px 20px 10px;background:var(--s3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
         <span style="font-size:15px;">🔩</span>
-        <span style="font-size:12px;letter-spacing:2px;font-family:'Orbitron',monospace;">${devId?'EDIT':'NEW'} DEVICE TYPE</span>
+        <span style="font-size:12px;letter-spacing:2px;font-family:'Orbitron',monospace;">${devId?'EDIT':'NEW'} STRUCT DATA</span>
         <span class="dev-class-badge" style="margin-left:auto;">CLASS</span>
       </div>
       <div style="padding:12px 20px 4px;display:flex;gap:20px;flex-shrink:0;flex-wrap:wrap;">
         <div style="flex:1;min-width:180px;">
-          <div class="dev-field-lbl">DEVICE TYPE NAME</div>
+          <div class="dev-field-lbl">STRUCT DATA NAME</div>
           <input id="dev-modal-name" type="text" placeholder="e.g. CylA, MotorConv…"
             style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
         </div>
@@ -364,7 +384,7 @@ function openDeviceTypeModal(devId) {
       </div>
       <div style="margin:6px 20px 4px;padding:5px 10px;background:rgba(34,211,238,.05);border:1px solid rgba(34,211,238,.15);border-radius:3px;font-size:9px;color:var(--text3);display:flex;gap:6px;flex-shrink:0;">
         <span style="color:var(--cyan);">ℹ</span>
-        <span>This is a <b>class</b> — no address here. In the <b>Variable Table</b>, select this device type as DATA FORMAT to create an instance. Address is assigned per-signal in the Variable Table.</span>
+        <span>This is a <b>class</b> — no address here. In the <b>Variable Table</b>, select this struct data as DATA FORMAT to create an instance. Address is assigned per-signal in the Variable Table.</span>
       </div>
       <div style="padding:4px 20px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
         <span style="font-size:9px;letter-spacing:1.5px;color:var(--cyan);font-family:'Orbitron',monospace;">SIGNALS</span>
@@ -426,7 +446,7 @@ function devModalAddRow(sig) {
 
 function confirmDeviceType() {
   const name=(document.getElementById('dev-modal-name').value||'').trim();
-  if(!name){alert('Please enter a device type name.');return;}
+  if(!name){alert('Please enter a struct data name.');return;}
   const catId=document.getElementById('dev-modal-cat').value;
   if(!project.devices) project.devices=[];
 
@@ -446,13 +466,13 @@ function confirmDeviceType() {
   }
   saveProject(); renderTree();
   closeModal('modal-device-type');
-  toast('✓ Device type: '+name);
+  toast('✓ Struct Data: '+name);
 }
 
 function removeDeviceType(devId,e){
   if(e)e.stopPropagation();
   const d=(project.devices||[]).find(x=>x.id===devId);
-  if(!confirm(`Delete device type "${d?.name}"?`)) return;
+  if(!confirm(`Delete struct data "${d?.name}"?`)) return;
   project.devices=project.devices.filter(x=>x.id!==devId);
   saveProject(); renderTree();
 }

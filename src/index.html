@@ -49,7 +49,7 @@
       <!-- Panel header -->
       <div class="sub-panel-head">
         <span class="sub-panel-title">📁 PROJECT</span>
-        <button class="panel-head-btn" onclick="openDeviceTypeModal(null)" title="Add Device Type" style="border-color:#22d3ee;color:#22d3ee;">⊕ Device</button>
+        <button class="panel-head-btn" onclick="openDeviceTypeModal(null)" title="Add Struct Data" style="border-color:#22d3ee;color:#22d3ee;">⊕ Struct Data</button>
         <button class="panel-head-btn" onclick="addUnit()" title="Add Unit">⊕ Unit</button>
       </div>
       <div style="flex:1;overflow-y:auto;">
@@ -213,6 +213,31 @@
     </svg>
     <div class="conn-hint" id="conn-hint">Click on Step/Transition/ParallelBar to connect — ESC to cancel</div>
     <div class="mini-map"><svg id="mini-svg"></svg></div>
+  </div>
+
+  <!-- Global Vars Tab Panel (virtual tab — shown when __vars__ tab is active) -->
+  <div id="gvt-main-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
+    <div class="sub-panel-head" style="flex-shrink:0;border-bottom:1px solid var(--border);">
+      <span class="sub-panel-title">📋 GLOBAL VARIABLES</span>
+      <button class="panel-head-btn" onclick="showExcelImportModal()" title="Import từ CSV/Excel" style="border-color:#22d3ee;color:#22d3ee;">📥 Import</button>
+    </div>
+    <div style="padding:6px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <input id="gvt-search" type="text" placeholder="🔍 Filter..."
+        style="flex:1;max-width:280px;background:var(--s2);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:10px;color:var(--text1);"
+        oninput="renderGlobalVarTable()">
+      <span id="gvt-count" style="font-size:9px;color:var(--text3);">0 struct data</span>
+    </div>
+    <div style="flex:1;overflow-y:auto;">
+      <table class="vt-table" style="width:100%;">
+        <thead><tr>
+          <th style="width:32px;"></th>
+          <th>Label</th>
+          <th>Type</th>
+          <th style="min-width:110px;">Address</th>
+        </tr></thead>
+        <tbody id="gvt-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Variable Table Panel -->

@@ -14,14 +14,25 @@ let vtOpen = true;
 let vtSelRows = new Set();
 let vtResizing = false, vtResizeStartY = 0, vtResizeStartH = 0;
 
-function getVars() {
-  // Always read from global state (single source of truth)
+// Returns only diagram-local vars (for saving)
+function getLocalVars() {
   if(!state.vars) state.vars = [];
   return state.vars;
 }
+
+// Returns merged view: local diagram vars + project.excelVars (global).
+// Local vars take priority if same label exists in both.
+// This is the single source of truth for all lookups (datalist, gen code, etc.)
+function getVars() {
+  const local = getLocalVars();
+  const excelVars = (project.excelVars || []);
+  const localLabels = new Set(local.map(v => v.label));
+  const extra = excelVars.filter(v => !localLabels.has(v.label));
+  return [...local, ...extra];
+}
+
 function saveVars(vars) {
   if(!activeDiagramId) return;
-  // Write into global state so flushState/saveDiagramData persists it
   state.vars = vars;
   saveDiagramData(activeDiagramId);   // persist immediately
   markModified(activeDiagramId, true);
@@ -38,7 +49,7 @@ function toggleVarTable() {
 }
 
 function renderVarTable() {
-  const vars = getVars();
+  const vars = getLocalVars();
   const filter = (document.getElementById('vt-search')?.value||'').toLowerCase();
   const tbody = document.getElementById('vt-tbody');
   if(!tbody) return;
@@ -93,7 +104,7 @@ function renderVarTable() {
         </span>`;
         tdA.addEventListener('click', e=>{
           e.stopPropagation();
-          const vars=getVars();
+          const vars=getLocalVars();
           if(vars[realIdx]){
             vars[realIdx]._sigExpanded = !(vars[realIdx]._sigExpanded !== false);
             saveVars(vars);
@@ -148,7 +159,7 @@ function renderVarTable() {
           addrInp.value=v.signalAddresses[sig.id]||'';
           addrInp.placeholder=sig.varType==='Input'?'%IX0.0':sig.varType==='Output'?'%QX0.0':'%MX0.0';
           addrInp.addEventListener('change',()=>{
-            const vars=getVars();
+            const vars=getLocalVars();
             if(vars[realIdx]){
               if(!vars[realIdx].signalAddresses) vars[realIdx].signalAddresses={};
               vars[realIdx].signalAddresses[sig.id]=addrInp.value;
@@ -168,105 +179,9 @@ function renderVarTable() {
       }
     });
   }
-  // ── Section: project.excelVars (read-only, từ Excel import) ─────────────
-  const excelVars = (project.excelVars||[]).filter(v=>
-    !filter ||
-    (v.label||'').toLowerCase().includes(filter) ||
-    (v.format||'').toLowerCase().includes(filter)
-  );
-  if(excelVars.length > 0){
-    // Separator row
-    const sepTr = document.createElement('tr');
-    sepTr.innerHTML = `<td colspan="5" style="padding:4px 8px;font-size:9px;
-      letter-spacing:1px;color:var(--text3);background:var(--s2);
-      border-top:1px solid var(--border);user-select:none;">
-      📊 PROJECT EXCEL VARS <span style="color:var(--cyan);margin-left:4px;">${excelVars.length} device${excelVars.length!==1?'s':''}</span>
-      <span style="opacity:.5;margin-left:6px;">— read-only · xóa qua nút 📥 Excel</span>
-    </td>`;
-    tbody.appendChild(sepTr);
-
-    excelVars.forEach(v => {
-      const devType = (project.devices||[]).find(d=>d.name===(v.format||''));
-      const isExpanded = v._sigExpanded !== false;
-
-      const tr = document.createElement('tr');
-      tr.classList.add('vt-dev-instance');
-      tr.style.opacity = '0.85';
-
-      // Row number (no click select)
-      const tdN = document.createElement('td');
-      tdN.className = 'vt-rownum';
-      tdN.style.color = 'var(--cyan)';
-      tdN.textContent = '⚡';
-      tr.appendChild(tdN);
-
-      // Label — read-only
-      const tdL = document.createElement('td');
-      tdL.innerHTML = `<span class="vt-cell lbl" style="opacity:.9;">${esc2(v.label||'')}</span>`;
-      tr.appendChild(tdL);
-
-      // Format — read-only
-      const tdF = document.createElement('td');
-      tdF.innerHTML = `<span class="vt-cell" style="font-size:9px;color:var(--cyan);padding:0 8px;">${esc2(v.format||'')}</span>`;
-      tr.appendChild(tdF);
-
-      // Expand toggle / signal count
-      const tdA = document.createElement('td');
-      tdA.style.cssText = 'padding:0 8px;font-size:9px;color:var(--cyan);cursor:pointer;user-select:none;';
-      tdA.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;">
-        <span style="font-size:10px;">${isExpanded?'▾':'▸'}</span>
-        <span style="opacity:.7;">${(devType&&devType.signals||[]).length} signals</span>
-      </span>`;
-      tdA.addEventListener('click', ()=>{
-        v._sigExpanded = !isExpanded;
-        saveProject();
-        renderVarTable();
-      });
-      tr.appendChild(tdA);
-
-      // Comment
-      const tdC = document.createElement('td');
-      tdC.innerHTML = `<span class="vt-sig-cmt" style="opacity:.6;">${esc2(v.comment||'Excel import')}</span>`;
-      tr.appendChild(tdC);
-
-      tbody.appendChild(tr);
-
-      // Signal sub-rows (read-only địa chỉ)
-      if(devType && isExpanded){
-        const sAddr = v.signalAddresses||{};
-        (devType.signals||[]).forEach(sig=>{
-          const addr = sAddr[sig.id]||'';
-          if(!addr) return; // ẩn signal chưa có địa chỉ
-          const subTr = document.createElement('tr');
-          subTr.className = 'vt-dev-signal-row';
-          subTr.style.opacity = '0.8';
-
-          const vc={Input:'vt-input',Output:'vt-output',Var:'vt-var'}[sig.varType]||'vt-var';
-          const vs={Input:'IN',Output:'OUT',Var:'VAR'}[sig.varType]||'VAR';
-          const tc={Bool:'sig-bool',Int:'sig-int',Real:'sig-real',Word:'sig-word'}[sig.dataType]||'sig-bool';
-
-          subTr.innerHTML = `
-            <td style="padding:0;"><div class="vt-sig-num"></div></td>
-            <td><div class="vt-sig-label">
-              <span class="vt-sig-indent">└</span>
-              <span class="vt-sig-name">${esc2(v.label||'?')}.${esc2(sig.name)}</span>
-              <span class="sdcol-type ${tc}" style="margin-left:5px;">${esc2(sig.dataType)}</span>
-              <span class="sdcol-io ${vc}" style="margin-left:3px;">${vs}</span>
-            </div></td>
-            <td><span style="font-size:9px;color:var(--text3);padding:0 8px;">${esc2(devType.name)}</span></td>
-            <td><span class="vt-cell addr" style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;color:var(--cyan);">${esc2(addr)}</span></td>
-            <td><span class="vt-sig-cmt">${esc2(sig.comment||'')}</span></td>`;
-          tbody.appendChild(subTr);
-        });
-      }
-    });
-  }
-
   // Update count
   const cnt = document.querySelector('.vt-count');
-  if(cnt) cnt.textContent = vars.length+' var'+(vars.length!==1?'s':'')
-    +(excelVars.length?' + '+excelVars.length+' excel':'')
-    +(filter?' (filtered)':'');
+  if(cnt) cnt.textContent = vars.length+' var'+(vars.length!==1?'s':'')+(filter?' (filtered)':'');
 }
 
 function vtEditCell(idx, field, val, cls, type, ph) {
@@ -275,7 +190,7 @@ function vtEditCell(idx, field, val, cls, type, ph) {
   inp.type = type; inp.className = 'vt-cell '+cls;
   inp.value = val; inp.placeholder = ph;
   inp.addEventListener('change', ()=>{
-    const vars=getVars(); if(vars[idx]) vars[idx][field]=inp.value; saveVars(vars);
+    const vars=getLocalVars(); if(vars[idx]) vars[idx][field]=inp.value; saveVars(vars);
   });
   inp.addEventListener('keydown', e=>{
     if(e.key==='Tab'){ e.preventDefault(); focusNextCell(idx, field, e.shiftKey); }
@@ -305,7 +220,7 @@ function vtSelectCell(idx, field, val) {
   const devTypes = (project.devices||[]);
   if(devTypes.length){
     const grpDev = document.createElement('optgroup');
-    grpDev.label = '── Device Types ──';
+    grpDev.label = '── Struct Data ──';
     devTypes.forEach(d=>{
       const o=document.createElement('option');
       o.value=d.name; o.textContent='❖ '+d.name;
@@ -316,7 +231,7 @@ function vtSelectCell(idx, field, val) {
   }
 
   sel.addEventListener('change',()=>{
-    const vars=getVars();
+    const vars=getLocalVars();
     if(vars[idx]){
       vars[idx].format=sel.value;
       // If switching to device type, init signalAddresses map
@@ -354,13 +269,13 @@ function focusNextCell(rowIdx, field, reverse) {
   }
 }
 function focusNextRow(rowIdx, field, reverse=false) {
-  const vars=getVars();
+  const vars=getLocalVars();
   const next = reverse ? rowIdx-1 : rowIdx+1;
   if(next>=0&&next<vars.length){ const tr=document.querySelector(`#vt-tbody tr[data-idx="${next}"]`);if(tr){const inp=tr.querySelector('input');if(inp)inp.focus();} }
 }
 
 function vtAddRow(after=-1) {
-  const vars=getVars();
+  const vars=getLocalVars();
   const newRow={label:'',format:'BOOL',address:'',comment:''};
   if(after>=0&&after<vars.length) vars.splice(after+1,0,newRow);
   else vars.push(newRow);
@@ -375,14 +290,14 @@ function vtAddRow(after=-1) {
 
 function vtDeleteSelected() {
   if(vtSelRows.size===0) return;
-  const vars=getVars();
+  const vars=getLocalVars();
   const sorted=[...vtSelRows].sort((a,b)=>b-a);
   sorted.forEach(i=>vars.splice(i,1));
   vtSelRows.clear();
   saveVars(vars); renderVarTable(); updateVtDelBtn();
 }
 function vtDeleteRow(idx) {
-  const vars=getVars(); vars.splice(idx,1);
+  const vars=getLocalVars(); vars.splice(idx,1);
   vtSelRows.delete(idx);
   saveVars(vars); renderVarTable();
 }
@@ -392,7 +307,7 @@ function updateVtDelBtn() {
 }
 
 function vtExportCSV() {
-  const vars=getVars();
+  const vars=getLocalVars();
   const rows=[['Label','DataFormat','Address','Comment']];
   vars.forEach(v=>{
     const devType=(project.devices||[]).find(d=>d.name===(v.format||''));
@@ -429,7 +344,7 @@ function vtImportCSV() {
           const cols=line.split(',').map(c=>c.trim().replace(/^"|"$/g,'').replace(/""/g,'"'));
           if(cols.length>=1&&cols[0]) vars.push({label:cols[0]||'',format:cols[1]||'BOOL',address:cols[2]||'',comment:cols[3]||''});
         });
-        const existing=getVars();
+        const existing=getLocalVars();
         saveVars([...existing,...vars]);
         renderVarTable();
         toast('✓ Imported '+vars.length+' variables');
@@ -441,6 +356,243 @@ function vtImportCSV() {
 }
 
 // Variable table resize drag
+// ═══════════════════════════════════════════════════════════
+//  GLOBAL VARIABLE TABLE (sidebar panel)
+// ═══════════════════════════════════════════════════════════
+const GVT_CYL_SIGNALS = [
+  {id:'cyl_coilA',  name:'CoilA',    dataType:'Bool', varType:'Output', comment:'Output coil A (extend)'},
+  {id:'cyl_coilB',  name:'CoilB',    dataType:'Bool', varType:'Output', comment:'Output coil B (retract)'},
+  {id:'cyl_lsh',    name:'LSH',      dataType:'Bool', varType:'Input',  comment:'Limit switch high (extended)'},
+  {id:'cyl_lsl',    name:'LSL',      dataType:'Bool', varType:'Input',  comment:'Limit switch low (retracted)'},
+  {id:'cyl_lockA',  name:'LockA',    dataType:'Bool', varType:'Var',    comment:'Interlock coil A'},
+  {id:'cyl_lockB',  name:'LockB',    dataType:'Bool', varType:'Var',    comment:'Interlock coil B'},
+  {id:'cyl_disSnsH',name:'DisSnsH',  dataType:'Bool', varType:'Var',    comment:'Disable sensor LSH'},
+  {id:'cyl_disSnsL',name:'DisSnsL',  dataType:'Bool', varType:'Var',    comment:'Disable sensor LSL'},
+  {id:'cyl_errA',   name:'ErrorA',   dataType:'Bool', varType:'Var',    comment:'Error flag dir A'},
+  {id:'cyl_errB',   name:'ErrorB',   dataType:'Bool', varType:'Var',    comment:'Error flag dir B'},
+  {id:'cyl_state',  name:'State',    dataType:'Bool', varType:'Var',    comment:'Cylinder state'},
+  {id:'cyl_hmiMan', name:'HmiManBtn',dataType:'Bool', varType:'Var',    comment:'HMI manual button'},
+];
+
+const GVT_UNIT_SIGNALS = [
+  {id:'originBaseAddr', name:'OriginBase', dataType:'Word', varType:'Var', path:'originBaseAddr'},
+  {id:'autoBaseAddr',   name:'AutoBase',   dataType:'Word', varType:'Var', path:'autoBaseAddr'},
+  {id:'flagOrigin',     name:'OriginFlag', dataType:'Bool', varType:'Var', path:'flags.flagOrigin'},
+  {id:'flagAuto',       name:'AutoFlag',   dataType:'Bool', varType:'Var', path:'flags.flagAuto'},
+  {id:'flagManual',     name:'ManualFlag', dataType:'Bool', varType:'Var', path:'flags.flagManual'},
+  {id:'flagError',      name:'ErrorFlag',  dataType:'Bool', varType:'Var', path:'flags.flagError'},
+  {id:'btnStart',       name:'Start',      dataType:'Bool', varType:'Input', path:'io.btnStart'},
+  {id:'hmiStop',        name:'Stop',       dataType:'Bool', varType:'Input', path:'io.hmiStop'},
+  {id:'btnReset',       name:'Reset',      dataType:'Bool', varType:'Input', path:'io.btnReset'},
+  {id:'eStop',          name:'EStop',      dataType:'Bool', varType:'Input', path:'io.eStop'},
+  {id:'outHomed',       name:'HomeDone',   dataType:'Bool', varType:'Output', path:'io.outHomed'},
+];
+
+function gvtGetEntries() {
+  const excelEntries = (project.excelVars || []).map(function(v, idx) {
+    return {
+      source: 'excel',
+      key: idx,
+      label: v.label || '',
+      format: v.format || 'Struct Data',
+      data: v,
+    };
+  });
+  const unitEntries = Object.keys(project.unitConfig || {}).map(function(key) {
+    const cfg = project.unitConfig[key] || {};
+    return {
+      source: 'unit',
+      key: key,
+      label: cfg.label || key,
+      format: 'Unit Station',
+      data: cfg,
+    };
+  });
+  return excelEntries.concat(unitEntries);
+}
+
+function gvtGetUnitAddr(cfg, path) {
+  return path.split('.').reduce(function(cur, part) {
+    return cur && cur[part] != null ? cur[part] : '';
+  }, cfg) || '';
+}
+
+function gvtSetUnitAddr(cfg, path, value) {
+  const parts = path.split('.');
+  let cur = cfg;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function gvtGetSigList(v) {
+  const devType = (project.devices||[]).find(d=>d.name===(v.format||''));
+  const devSigs = devType ? (devType.signals||[]) : [];
+  const hasCylIds = devSigs.some(s=>s.id&&s.id.startsWith('cyl_'));
+  return (v.format==='Cylinder' && !hasCylIds) ? GVT_CYL_SIGNALS : devSigs;
+}
+
+function gvtGetExcelSignalAddress(v, sig) {
+  const sAddr = (v && v.signalAddresses) || {};
+  if (!sig) return '';
+
+  if ((v && v.format) === 'Cylinder') {
+    const key = String(sig.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key === 'lsh') return sAddr.cyl_lsh || sAddr.LSH || '';
+    if (key === 'lsl') return sAddr.cyl_lsl || sAddr.LSL || '';
+    if (key === 'locka') return sAddr.cyl_lockA || sAddr.LockA || '';
+    if (key === 'lockb') return sAddr.cyl_lockB || sAddr.LockB || '';
+    if (key === 'dissnslsh' || key === 'dissnsh') return sAddr.cyl_disSnsH || sAddr.DisSnsLSH || sAddr.DisSnsH || '';
+    if (key === 'dissnslsl' || key === 'dissnsl') return sAddr.cyl_disSnsL || sAddr.DisSnsLSL || sAddr.DisSnsL || '';
+    if (key === 'state') return sAddr.cyl_state || sAddr.State || '';
+    if (key === 'errora' || key === 'erra') return sAddr.cyl_errA || sAddr.ErrorA || sAddr.ErrA || '';
+    if (key === 'errorb' || key === 'errb') return sAddr.cyl_errB || sAddr.ErrorB || sAddr.ErrB || '';
+    if (key === 'coila') return sAddr.cyl_coilA || sAddr.CoilA || '';
+    if (key === 'coilb') return sAddr.cyl_coilB || sAddr.CoilB || '';
+    if (key === 'hmimanbtn' || key === 'hmiman') return sAddr.cyl_hmiMan || sAddr.HmiManBtn || sAddr.HmiMan || '';
+  }
+
+  if (sig.id && sAddr[sig.id]) return sAddr[sig.id];
+
+  return '';
+}
+
+function renderGlobalVarTable() {
+  const tbody = document.getElementById('gvt-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  const entries = gvtGetEntries();
+  const filter = (document.getElementById('gvt-search')?.value||'').toLowerCase();
+  const filtered = entries.filter(v=>
+    !filter ||
+    (v.label||'').toLowerCase().includes(filter) ||
+    (v.format||'').toLowerCase().includes(filter)
+  );
+
+  const cnt = document.getElementById('gvt-count');
+  if(cnt) cnt.textContent = entries.length+' item'+(entries.length!==1?'s':'');
+
+  if(filtered.length===0){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td colspan="4" class="vt-empty">${entries.length===0
+      ?'Chưa có — import từ 📥 CSV/Excel'
+      :'No match for filter'}</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  filtered.forEach(function(entry){
+    const v = entry.data;
+    const sigList = entry.source === 'unit' ? GVT_UNIT_SIGNALS : gvtGetSigList(v);
+    const sAddr = v.signalAddresses||{};
+    const isExpanded = v._sigExpanded !== false;
+
+    // ── Device header row ──
+    const tr=document.createElement('tr');
+    tr.className='vt-dev-instance';
+
+    const tdDel=document.createElement('td');
+    tdDel.className='vt-rownum';
+    tdDel.innerHTML=`<button onclick="gvtDeleteVar('${entry.source}', '${String(entry.key).replace(/'/g, '\\&#39;')}')" title="Xóa" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px;padding:0 3px;">✕</button>`;
+    tr.appendChild(tdDel);
+
+    const tdL=document.createElement('td');
+    tdL.innerHTML=`<span class="vt-cell lbl">${esc2(v.label||'')}</span>`;
+    tr.appendChild(tdL);
+
+    const tdF=document.createElement('td');
+    tdF.innerHTML=`<span style="font-size:9px;color:var(--cyan);">${esc2(v.format||'')}</span>`;
+    tr.appendChild(tdF);
+
+    const tdTog=document.createElement('td');
+    tdTog.style.cssText='padding:0 8px;font-size:9px;color:var(--cyan);cursor:pointer;user-select:none;';
+    tdTog.innerHTML=`<span style="display:inline-flex;align-items:center;gap:4px;">
+      <span>${isExpanded?'▾':'▸'}</span>
+      <span style="opacity:.7;">${sigList.length} address${sigList.length!==1?'es':''}</span>
+    </span>`;
+    tdTog.addEventListener('click',function(){
+      if(entry.source === 'excel' && project.excelVars[entry.key]) {
+        project.excelVars[entry.key]._sigExpanded = !isExpanded;
+      } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
+        project.unitConfig[entry.key]._sigExpanded = !isExpanded;
+      }
+      saveProject(); renderGlobalVarTable();
+    });
+    tr.appendChild(tdTog);
+    tbody.appendChild(tr);
+
+    // ── Signal sub-rows (editable) ──
+    if(isExpanded && sigList.length>0){
+      sigList.forEach(function(sig){
+        const subTr=document.createElement('tr');
+        subTr.className='vt-dev-signal-row';
+        const vc={Input:'vt-input',Output:'vt-output',Var:'vt-var'}[sig.varType]||'vt-var';
+        const vs={Input:'IN',Output:'OUT',Var:'VAR'}[sig.varType]||'VAR';
+        const tc={Bool:'sig-bool',Int:'sig-int',Real:'sig-real',Word:'sig-word'}[sig.dataType||'Bool']||'sig-bool';
+
+        // col 1: indent marker
+        const tdSN=document.createElement('td');
+        tdSN.innerHTML='<div class="vt-sig-num"></div>';
+        subTr.appendChild(tdSN);
+
+        // col 2: Label.SignalName
+        const tdSLabel=document.createElement('td');
+        tdSLabel.innerHTML=`<div class="vt-sig-label">
+          <span class="vt-sig-indent">└</span>
+          <span class="vt-sig-name">${esc2(v.label||'?')}.${esc2(sig.name)}</span>
+        </div>`;
+        subTr.appendChild(tdSLabel);
+
+        // col 3: Type badges
+        const tdSType=document.createElement('td');
+        tdSType.innerHTML=`<span class="sdcol-type ${tc}">${esc2(sig.dataType||'Bool')}</span>
+          <span class="sdcol-io ${vc}" style="margin-left:3px;">${vs}</span>`;
+        subTr.appendChild(tdSType);
+
+        // col 4: Address input
+        const tdSAddr=document.createElement('td');
+        const addrInp=document.createElement('input');
+        addrInp.type='text';
+        addrInp.className='vt-cell addr vt-sig-addr';
+        addrInp.value=entry.source === 'unit' ? gvtGetUnitAddr(v, sig.path) : gvtGetExcelSignalAddress(v, sig);
+        addrInp.placeholder=sig.varType==='Input'?'MR…':sig.varType==='Output'?'LR…':'MR…';
+        addrInp.addEventListener('change',function(){
+          if(entry.source === 'excel' && project.excelVars[entry.key]){
+            if(!project.excelVars[entry.key].signalAddresses) project.excelVars[entry.key].signalAddresses={};
+            project.excelVars[entry.key].signalAddresses[sig.id]=addrInp.value;
+          } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
+            gvtSetUnitAddr(project.unitConfig[entry.key], sig.path, addrInp.value);
+          }
+          saveProject();
+          if(typeof updateVarDatalist==='function') updateVarDatalist();
+        });
+        tdSAddr.appendChild(addrInp);
+        subTr.appendChild(tdSAddr);
+        tbody.appendChild(subTr);
+      });
+    }
+  });
+}
+
+function gvtDeleteVar(source, key) {
+  if(source === 'excel') {
+    const idx = parseInt(key, 10);
+    if(!project.excelVars||idx<0||idx>=project.excelVars.length) return;
+    if(!confirm('Xóa "'+project.excelVars[idx].label+'" khỏi Global Vars?')) return;
+    project.excelVars.splice(idx,1);
+  } else if(source === 'unit') {
+    if(!project.unitConfig || !project.unitConfig[key]) return;
+    if(!confirm('Xóa unit "'+(project.unitConfig[key].label||key)+'" khỏi Global Vars?')) return;
+    delete project.unitConfig[key];
+  } else {
+    return;
+  }
+  saveProject();
+  renderGlobalVarTable();
+}
+
 function initVtResize() {
   const handle=document.getElementById('vt-resize');
   if(!handle) return;

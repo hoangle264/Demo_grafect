@@ -6,6 +6,38 @@
 //  deleteDiagramData / flushState → moved to src/js/modules/store.js
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+//  VIRTUAL TAB: GLOBAL VARIABLES  (__vars__)
+// ═══════════════════════════════════════════════════════════
+const VARS_TAB_ID = '__vars__';
+
+function openVarsTab() {
+  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID) flushState();
+  if(!openTabs.find(t=>t.id===VARS_TAB_ID)) openTabs.push({id:VARS_TAB_ID});
+  activeDiagramId = VARS_TAB_ID;
+  localStorage.setItem('gf2-active', VARS_TAB_ID);
+  // Show vars panel, hide canvas + vartable
+  const gvtPanel = document.getElementById('gvt-main-panel');
+  const cw = document.getElementById('canvas-wrap');
+  const vtp = document.getElementById('vartable-panel');
+  if(gvtPanel) gvtPanel.style.display = 'flex';
+  if(cw) cw.style.display = 'none';
+  if(vtp) vtp.style.display = 'none';
+  selIds.clear();
+  renderTabs();
+  renderTree();
+  if(typeof renderGlobalVarTable === 'function') renderGlobalVarTable();
+}
+
+function _showCanvas() {
+  const gvtPanel = document.getElementById('gvt-main-panel');
+  const cw = document.getElementById('canvas-wrap');
+  const vtp = document.getElementById('vartable-panel');
+  if(gvtPanel) gvtPanel.style.display = 'none';
+  if(cw) cw.style.display = '';
+  if(vtp) vtp.style.display = '';
+}
+
 function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {
   const id = 'diag-'+Date.now();
   const num = project.diagrams.length + 1;
@@ -73,6 +105,8 @@ function createSample(id) {
 // deleteDiagramData → moved to src/js/modules/store.js
 
 function openTab(id) {
+  if(id === VARS_TAB_ID) { openVarsTab(); return; }
+  _showCanvas();
   // Flush current state if active
   if (activeDiagramId) flushState();
   // Check if already open
@@ -107,11 +141,16 @@ function openTab(id) {
 
 function closeTab(id, e) {
   if (e) e.stopPropagation();
-  if (activeDiagramId === id) flushState();
+  if (activeDiagramId === id && id !== VARS_TAB_ID) flushState();
   openTabs = openTabs.filter(t=>t.id!==id);
   if (activeDiagramId === id) {
     if (openTabs.length > 0) openTab(openTabs[openTabs.length-1].id);
-    else { activeDiagramId=null; state={steps:[],transitions:[],parallels:[],connections:[],vars:[]}; render(); renderTabs(); renderVarTable(); }
+    else {
+      activeDiagramId=null;
+      _showCanvas();
+      state={steps:[],transitions:[],parallels:[],connections:[],vars:[]};
+      render(); renderTabs(); renderVarTable();
+    }
   } else renderTabs();
 }
 
