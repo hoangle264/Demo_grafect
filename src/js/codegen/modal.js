@@ -223,6 +223,14 @@ function cgUCBuildUnitSelector() {
   }
 
   if (!items.length) {
+    // Fallback: lấy từ project.unitConfig khi project.units chưa có
+    const unitCfg = (typeof project !== 'undefined' && project.unitConfig) || {};
+    Object.keys(unitCfg).forEach(function(key) {
+      items.push({ id: key, label: key, count: 0 });
+    });
+  }
+
+  if (!items.length) {
     if (section) section.style.display = 'none';
     return;
   }
@@ -366,6 +374,13 @@ function cgUCEnsureTemplateHealth(actionLabel) {
   return null;
 }
 
+function cgUCGetEffectiveConfig(selectedUnitId) {
+  if (UC_UNIT_CONFIG) return UC_UNIT_CONFIG;
+  const hasUnitConfig = (typeof project !== 'undefined' && project.unitConfig && Object.keys(project.unitConfig).length > 0);
+  if (!hasUnitConfig || typeof ucBuildSyntheticConfig !== 'function') return null;
+  return ucBuildSyntheticConfig(selectedUnitId);
+}
+
 // ─── Live preview ─────────────────────────────────────────────────────────────
 function cgUpdatePreview() {
   const target = document.getElementById('cg-target')?.value || 'kv-5500';
@@ -396,15 +411,12 @@ function cgUpdatePreview() {
 
   // ── Unit Config JSON engine ───────────────────────────────────────────────
   if (isUC) {
-    // Dùng JSON file nếu đã load, hoặc synthetic config từ project.excelVars
-    const hasExcelVars = (typeof project !== 'undefined' && project.excelVars && project.excelVars.length > 0);
     const selectedUnitId = cgUCGetSelectedUnitId();
-    const effectiveConfig = UC_UNIT_CONFIG
-      || (hasExcelVars && typeof ucBuildSyntheticConfig === 'function' ? ucBuildSyntheticConfig(selectedUnitId) : null);
+    const effectiveConfig = cgUCGetEffectiveConfig(selectedUnitId);
 
     if (!effectiveConfig) {
-      pre.textContent = '; Vui lòng load Unit Config JSON   (infeed-unit.json)\n; hoặc import dữ liệu Excel để tự động tạo config.';
-      if (stat) stat.textContent = 'Unit Config mode — chờ load file JSON hoặc import Excel';
+      pre.textContent = '; Vui lòng load Unit Config JSON (infeed-unit.json)\n; hoặc import đủ dữ liệu Unit CSV + thiết bị để tạo config.';
+      if (stat) stat.textContent = 'Unit Config mode — thiếu cấu hình Unit';
       return;
     }
     const health = cgUCGetTemplateHealth();
@@ -417,7 +429,8 @@ function cgUpdatePreview() {
     try {
       const result  = cgGenerateFromUnitConfig(effectiveConfig, null, profile, selectedUnitId, {
         strictTemplates: true,
-        addressMode: addrMode
+        addressMode: addrMode,
+        requireUnitBindings: true
       });
       pre.textContent = result.code;
       if (stat) stat.textContent = result.stats;
@@ -523,8 +536,10 @@ function cgUCUpdateStatus() {
   const el = document.getElementById('uc-status');
   if (!el) return;
   const parts = [];
-  if (UC_UNIT_CONFIG) {
-    const cfg = UC_UNIT_CONFIG;
+  const selectedUnitId = typeof cgUCGetSelectedUnitId === 'function' ? cgUCGetSelectedUnitId() : null;
+  const effectiveConfig = cgUCGetEffectiveConfig(selectedUnitId);
+  if (effectiveConfig) {
+    const cfg = effectiveConfig;
     const label = cfg.unit?.label || 'loaded';
     // v3: devices[] / v2: cylinders[]
     const devCount = Array.isArray(cfg.devices)
@@ -532,7 +547,8 @@ function cgUCUpdateStatus() {
       : (cfg.cylinders?.length || 0);
     const schemaVer = (cfg.unit?.overrides != null || cfg.devices != null) ? 'v3' : 'v2';
     const idxStr = cfg.unit?.unitIndex != null ? ' idx=' + cfg.unit.unitIndex : '';
-    parts.push(`✓ Unit Config [${schemaVer}]: ${label}${idxStr}  (${devCount} device(s))`);
+    const sourceLabel = UC_UNIT_CONFIG ? 'Unit Config' : 'Unit CSV';
+    parts.push(`✓ ${sourceLabel} [${schemaVer}]: ${label}${idxStr}  (${devCount} device(s))`);
   }
   if (UC_CYLINDER_TYPES) {
     parts.push('Cylinder Types: ' + Object.keys(UC_CYLINDER_TYPES).filter(k => !k.startsWith('_')).length + ' types (optional)');
@@ -545,18 +561,18 @@ function cgUCUpdateStatus() {
   if (libKeys.length) {
     parts.push(`Device Library: ${libKeys.length} type(s) loaded`);
   }
-  el.textContent = parts.length ? parts.join('  |  ') : 'Load Unit Config JSON để bắt đầu';
-  el.style.color = UC_UNIT_CONFIG ? 'var(--cyan)' : 'var(--text3)';
+  el.textContent = parts.length ? parts.join('  |  ') : 'Load Unit Config JSON hoặc import Unit CSV để bắt đầu';
+  el.style.color = effectiveConfig ? 'var(--cyan)' : 'var(--text3)';
 
   // Cập nhật summary trên header của collapsible bar
   const summary = document.getElementById('uc-files-summary');
   if (summary) {
-    if (UC_UNIT_CONFIG) {
-      const label = UC_UNIT_CONFIG.unit?.label || 'loaded';
+    if (effectiveConfig) {
+      const label = effectiveConfig.unit?.label || 'loaded';
       const extras = [UC_CYLINDER_TYPES ? 'Cyl' : null,
                       Object.keys(DEVICE_LIBRARY || {}).filter(k => !k.startsWith('_')).length ? 'DevLib' : null,
                       UC_RUNTIME_DEVICE_META ? 'Meta' : null].filter(Boolean);
-      summary.textContent = '✓ ' + label + (extras.length ? '  +' + extras.join(', ') : '');
+      summary.textContent = '✓ ' + label + (UC_UNIT_CONFIG ? '' : ' (CSV)') + (extras.length ? '  +' + extras.join(', ') : '');
       summary.style.color = 'var(--cyan)';
     } else {
       summary.textContent = 'Chưa load file';
@@ -571,19 +587,21 @@ function cgDownloadCode() {
 
   // ── Unit Config engine ────────────────────────────────────────────────────
   if (target === 'unit-config') {
-    if (!UC_UNIT_CONFIG) {
-      toast('⚠ Load Unit Config JSON trước');
+    const selectedUnitId = cgUCGetSelectedUnitId();
+    const effectiveConfig = cgUCGetEffectiveConfig(selectedUnitId);
+    if (!effectiveConfig) {
+      toast('⚠ Load Unit Config JSON hoặc import Unit CSV trước');
       return;
     }
     if (!cgUCEnsureTemplateHealth('download code')) return;
-    const profile        = PLC_PROFILES['kv-5500'];
-    const selectedUnitId = cgUCGetSelectedUnitId();
-    const addrMode       = document.getElementById('uc-addr-mode')?.value || 'linear';
-    const result  = cgGenerateFromUnitConfig(UC_UNIT_CONFIG, null, profile, selectedUnitId, {
+    const profile  = PLC_PROFILES['kv-5500'];
+    const addrMode = document.getElementById('uc-addr-mode')?.value || 'linear';
+    const result  = cgGenerateFromUnitConfig(effectiveConfig, null, profile, selectedUnitId, {
       strictTemplates: true,
-      addressMode: addrMode
+      addressMode: addrMode,
+      requireUnitBindings: true
     });
-    const label   = (UC_UNIT_CONFIG.unit?.label || 'unit').replace(/\s+/g, '_');
+    const label   = (effectiveConfig.unit?.label || 'unit').replace(/\s+/g, '_');
     const blob = new Blob([result.code], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

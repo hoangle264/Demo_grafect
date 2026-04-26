@@ -1,194 +1,491 @@
-1.Mục tiêu dự án.
+# Grafcet Studio — Hướng dẫn phát triển theo trạng thái dự án hiện tại
 
-- Dự án này là một công cụ dựa trên Web (HTML/JS/CSS) dùng để thiết kế sơ đồ Grafcet (SFC - Sequential Function Chart) và tự động tạo mã nguồn (Code Generation) từ sơ đồ đó.
+## 1. Mục tiêu dự án
 
-Nguyên tắc:
+Grafcet Studio là ứng dụng web client-side thuần HTML/CSS/JavaScript để:
 
-Đây là một ứng dụng Client-side thuần túy (không backend).
+- vẽ sơ đồ GRAFCET / SFC theo IEC 60848
+- quản lý project gồm Unit, Diagram, Struct Data, Global Variables
+- import dữ liệu thiết bị và Unit từ CSV
+- sinh mã PLC từ dữ liệu project hiện tại
 
-Logic chính nằm ở việc quản lý các đối tượng: Steps (Bước), Transitions (Chuyển tiếp), và Actions (Hành động).
+Ứng dụng không có backend. Toàn bộ trạng thái được giữ trong runtime global và lưu bằng `localStorage`.
 
-AI phải tuân thủ tiêu chuẩn IEC 61131-3 khi gợi ý về logic Grafcet.
+Nguyên tắc quan trọng:
 
-2.Cấu trúc dự án.
+- Canvas là nguồn sự thật cho flow và thứ tự bước.
+- `project` là nguồn sự thật của dữ liệu project-level.
+- Codegen hiện tập trung vào nhánh `Unit Config JSON` và `Runtime Plan [debug]`.
+- Nếu tài liệu khác mâu thuẫn với mã nguồn hiện tại, ưu tiên hành vi thực tế trong `src/`.
 
+## 2. Cấu trúc thư mục
+
+```text
 /Demo_grafect
-├── /src                                (Mã nguồn chính)
-│   ├── index.html                      (Entry point — cấu trúc DOM, tải toàn bộ script)
-│   ├── /css
-│   │   └── grafcet-studio.css          (Giao diện: màu sắc, layout, panel, SVG elements)
-│   ├── /js
-│   │   ├── /vendor                     (Thư viện bên thứ ba — local, không dùng CDN)
-│   │   │   └── handlebars.min.js       (Handlebars v4.7.9 — bản local để hỗ trợ offline/file://)
-│   │   ├── /core                       (Nền tảng — phải tải TRƯỚC mọi module khác)
-│   │   │   ├── constants.js            (Hằng số kích thước, tất cả biến global runtime)
-│   │   │   ├── store.js                (Project state singleton, lưu/tải localStorage)
-│   │   │   ├── utils.js                (Hàm tiện ích thuần túy dùng chung)
-│   │   │   └── graph-utils.js          (Duyệt đồ thị: topological sort, path finding)
-│   │   ├── /editor                     (Chức năng bộ soạn thảo sơ đồ)
-│   │   │   ├── actions.js              (IEC 61131-3 action qualifiers, bảng action)
-│   │   │   ├── panels.js               (Quản lý panel/sidebar, init ứng dụng)
-│   │   │   ├── canvas.js               (Render SVG: steps, transitions, connections)
-│   │   │   ├── elements.js             (Thêm/xóa/chọn elements, công cụ align)
-│   │   │   ├── events.js               (Sự kiện chuột/bàn phím, drag, snap, zoom)
-│   │   │   ├── tree.js                 (Sidebar tree: units, devices, folders, modes)
-│   │   │   ├── project.js              (Quản lý project/diagram: mở, lưu, đổi tên)
-│   │   │   ├── export.js               (Import/Export JSON, SVG, HTML)
-│   │   │   ├── tables.js               (Modal bảng xuất: steps, transitions, branches)
-│   │   │   └── vars.js                 (Bảng biến I/O: hiển thị, sửa, CSV import/export; quản lý Global Vars sidebar tab)
-│   │   └── /codegen                    (Sinh mã nguồn PLC)
-│   │       ├── kv-generator.js         (Canvas-based KV/PLC generator legacy; hỗ trợ kv_main.hbs/kv_step.hbs)
-│   │       ├── sequence.js             (Giải trình tự Grafcet từ canvas; dùng chung cho KV path và Unit Config context)
-│   │       ├── st-generator.js         (IEC 61131-3 Structured Text — demo/stub; hỗ trợ st_main.hbs tùy chỉnh)
-│   │       ├── templates-bundle.js     (Tất cả .hbs nhúng inline vào JS — hỗ trợ offline/file:// cho Unit Config templates)
-│   │       ├── unit-config.js          (Unit Config JSON engine chính + Handlebars template rendering strict/non-strict)
-│   │       ├── template-manager.js     (Registry template động cho Unit Config + legacy KV/ST templates; validate, health check, localStorage)
-│   │       ├── runtime-metadata.js     (Chuẩn hóa metadata runtime cho execute/feedback mapping)
-│   │       ├── runtime-resolver.js     (Resolve runtime signals và step semantics từ project/unit config)
-│   │       ├── runtime-planner.js      (Lập runtime execution plan từ canvas + metadata)
-│   │       ├── output-binding-planner.js (Lập output binding plan cho device outputs/runtime)
-│   │       ├── runtime-debug.js        (Build target Runtime Plan [debug] để inspect pipeline)
-│   │       └── modal.js                (Modal UI sinh mã: chọn target, preview, copy/download; có panel Template Manager)
-│   └── /templates                      (Handlebars .hbs templates cho sinh mã IL)
-│       ├── auto.hbs                    (Template chế độ Auto)
-│       ├── error.hbs                   (Template chế độ Error)
-│       ├── manual.hbs                  (Template chế độ Manual)
-│       ├── origin.hbs                  (Template chế độ Origin)
-│       ├── output.hbs                  (Template section Output)
-│       ├── main-output.hbs             (Dispatcher tổng hợp output cho từng device kind)
-│       ├── step-body.hbs               (Partial: phần completion của mỗi Step — LD/AND/SET)
-│       ├── step-body-1.hbs             (Partial thay thế: có header comment + "no feedback" fallback)
-│       └── /devices                    (Partials thiết bị)
-│           ├── cylinder.hbs            (Template IL cho xy-lanh)
-│           ├── motor.hbs               (Template IL cho motor)
-│           └── servo.hbs               (Template IL cho servo)
-├── /config                             (Cấu hình hệ thống — chỉ chứa templates & libraries)
-│   ├── cylinder-types.json             (Định nghĩa loại xy-lanh)
-│   ├── device-library.json             (Thư viện thiết bị)
-│   ├── plc-profiles.json               (Profile PLC các hãng)
-│   ├── unit-templates.json             (Template unit chuẩn)
-│   ├── infeed-unit-v3.json             (Ví dụ unit config v3)
-│   └── Code gen.txt                    (Ví dụ mã IL sinh ra — dùng làm tham khảo)
-├── /projects                           (Dữ liệu project người dùng)
-│   └── infeed-unit.json                (Ví dụ project Grafcet)
-├── /docs                               (Tài liệu)
-│   ├── instruction.md                  (Hướng dẫn phát triển cho AI — file này)
-│   └── gencode.md                      (Tài liệu chi tiết về sinh mã nguồn)
-└── package.json                        (Metadata dự án)
+├── config/
+│   ├── Code gen.txt
+│   ├── cylinder-types.json
+│   ├── device-library.json
+│   ├── infeed-unit-v3.json
+│   ├── plc-profiles.json
+│   ├── runtime-device-metadata.sample.json
+│   ├── sample-cylinders.csv
+│   ├── sample-units.csv
+│   └── unit-templates.json
+├── docs/
+│   ├── codegen-runtime-handoff.md
+│   ├── excel-driven-config-plan.md
+│   ├── gencode.md
+│   ├── instruction.md
+│   └── plan.md
+├── projects/
+│   └── infeed-unit.json
+├── src/
+│   ├── index.html
+│   ├── css/
+│   │   └── grafcet-studio.css
+│   ├── js/
+│   │   ├── codegen/
+│   │   ├── core/
+│   │   ├── editor/
+│   │   └── vendor/
+│   └── templates/
+└── package.json
+```
 
-3.Vai trò các file chính.
+## 3. Load order thực tế
 
-Khi xử lý mã nguồn, AI cần truy xuất logic dựa trên các file sau:
+Thứ tự tải script phải bám đúng `src/index.html`. Thứ tự hiện tại là:
 
-src/index.html: Điểm nhập (Entry point). Chứa cấu trúc DOM cho Canvas vẽ sơ đồ và các panel điều khiển. Tải tất cả script theo thứ tự: core → editor → codegen; thứ tự chi tiết của codegen phải bám theo file thực tế trong index.html.
+1. `js/vendor/handlebars.min.js`
+2. `js/core/utils.js`
+3. `js/core/graph-utils.js`
+4. `js/core/store.js`
+5. `js/core/constants.js`
+6. `js/editor/actions.js`
+7. `js/editor/panels.js`
+8. `js/editor/canvas.js`
+9. `js/editor/elements.js`
+10. `js/editor/events.js`
+11. `js/editor/tree.js`
+12. `js/editor/project.js`
+13. `js/editor/export.js`
+14. `js/editor/tables.js`
+15. `js/editor/vars.js`
+16. `js/editor/excel-import.js`
+17. `js/codegen/kv-generator.js`
+18. `js/codegen/sequence.js`
+19. `js/codegen/st-generator.js`
+20. `js/codegen/templates-bundle.js`
+21. `js/codegen/unit-config.js`
+22. `js/codegen/template-manager.js`
+23. `js/codegen/runtime-metadata.js`
+24. `js/codegen/runtime-resolver.js`
+25. `js/codegen/runtime-planner.js`
+26. `js/codegen/output-binding-planner.js`
+27. `js/codegen/runtime-debug.js`
+28. `js/codegen/modal.js`
 
-src/js/core/constants.js: Khai báo TẤT CẢ hằng số (SW, SH, TW, TH, GRID…) và biến global runtime (state, tool, selIds, viewX/Y/Scale…). Phải tải đầu tiên.
+Không được giả định load order kiểu `constants -> utils -> store`. Hãy bám đúng file HTML hiện có.
 
-src/js/core/store.js: Project state singleton. Quản lý `project`, `openTabs`, `activeDiagramId`. Lưu/tải localStorage, flushState(), loadDiagramData().
+## 4. Các module chính
 
-src/js/core/utils.js: Hàm tiện ích thuần túy dùng chung (toast, esc2, closeModal, downloadFile…).
+### 4.1 Core
 
-src/js/core/graph-utils.js: Duyệt đồ thị Grafcet thuần túy (topological sort, path finding, resolveStepsThrough).
+- `src/js/core/store.js`
+  - giữ state project toàn cục: `project`, `openTabs`, `activeDiagramId`
+  - persist vào `localStorage`
+  - khai báo và đồng bộ `project.excelVars` và `project.unitConfig`
+  - có `syncStructDataFromProjectData()` để tự tạo Struct Data type từ dữ liệu đang có
 
-src/js/editor/actions.js: Xử lý IEC 61131-3 action qualifiers (N, S, R, P, L, D…). Render bảng action trong right panel. Hàm `updateVarDatalist()` dùng `getVars()` (merged view) để build datalist gợi ý — tự động bao gồm cả `project.excelVars`, không cần loop riêng.
+- `src/js/core/constants.js`
+  - chứa runtime globals cho canvas/editor
 
-src/js/editor/panels.js: Quản lý trạng thái panel sidebar/rpanel. Chứa hàm `init()` khởi tạo toàn bộ ứng dụng. Hàm `switchSidebarTab(tab)` nhận 3 giá trị: `'proj'`, `'tools'`, `'vars'`. Khi chuyển sang `'vars'`, tự động gọi `renderGlobalVarTable()`.
+- `src/js/core/utils.js`
+  - các helper dùng chung như `toast`, `esc2`, `downloadFile`, `closeModal`
 
-src/js/editor/canvas.js: Render toàn bộ sơ đồ bằng SVG (steps, transitions, parallel bars, connections, grid).
+- `src/js/core/graph-utils.js`
+  - helper duyệt đồ thị và path/sequence
 
-src/js/editor/elements.js: Thêm/xóa/chọn elements trên canvas. Công cụ align. Hàm setTool().
+### 4.2 Editor
 
-src/js/editor/events.js: Xử lý toàn bộ sự kiện chuột (drag, pan, select box, resize) và bàn phím. Snap to grid.
+- `src/js/editor/canvas.js`
+  - render SVG canvas
 
-src/js/editor/tree.js: Render sidebar tree (units, modes, devices, folders). Quản lý device types và modal properties.
+- `src/js/editor/elements.js`
+  - tạo/xóa/chọn element
 
-src/js/editor/project.js: Thêm/xóa/đổi tên diagram và project. Mở tab, lưu diagram, newProject().
+- `src/js/editor/events.js`
+  - chuột, bàn phím, drag, pan, snap
 
-src/js/editor/export.js: Import project JSON, export JSON/SVG/HTML. updateStats(), miniMap(), afterChange().
+- `src/js/editor/tree.js`
+  - Project tree, Unit, Diagram, Struct Data type
 
-src/js/editor/tables.js: Modal "Export Tables" — bảng steps, transitions, branches, variables dạng HTML/CSV.
+- `src/js/editor/project.js`
+  - tạo project, add diagram, tab handling, unit assignment
 
-src/js/editor/vars.js: Bảng biến I/O (Variable Table) — hiển thị, inline edit, import/export CSV.
+- `src/js/editor/actions.js`
+  - IEC 61131-3 action qualifiers và editor cho action
 
-**Kiến trúc biến (2 nguồn, 1 view):**
-- `state.vars[]` — biến local của từng diagram (lưu qua `saveDiagramData`). Quản lý trong bảng Variable Table (phần dưới canvas).
-- `project.excelVars[]` — biến thiết bị import từ Excel/CSV (project-level). Quản lý trong sidebar tab 🌐 GLOBAL VARS.
-- `getLocalVars()` — trả về `state.vars` của diagram hiện tại. Dùng cho tất cả thao tác save/edit trong Variable Table.
-- `getVars()` — trả về **merged view**: local vars + excelVars (local ưu tiên nếu trùng label). Dùng cho codegen lookup và action datalist. Đây là nguồn sự thật duy nhất cho mọi tra cứu biến.
-- `saveVars(vars)` — chỉ lưu local vars (không lọc excelVars vì chúng không ở đây).
+- `src/js/editor/vars.js`
+  - quản lý `VARIABLE TABLE` cho diagram-local vars
+  - quản lý `GLOBAL VARIABLES` panel cho `project.excelVars` và `project.unitConfig`
 
-**Global Vars sidebar tab:**
-- `renderGlobalVarTable()` — render `project.excelVars` trong `#gvt-tbody`. Hỗ trợ filter qua `#gvt-search`, hiển thị count qua `#gvt-count`. Signal address có thể **sửa trực tiếp** qua input, lưu vào `project.excelVars[idx].signalAddresses[sig.id]`.
-- `gvtDeleteVar(idx)` — xóa 1 entry khỏi `project.excelVars` (có confirm dialog), sau đó `saveProject()` + re-render.
-- `GVT_CYL_SIGNALS` — danh sách 12 signal chuẩn cho Cylinder (dùng khi device definition không có IDs `cyl_*`).
-- `gvtGetSigList(v)` — lấy danh sách signal cho 1 excelVar, ưu tiên devType từ `project.devices`, fallback về `GVT_CYL_SIGNALS` nếu format=Cylinder.
+- `src/js/editor/excel-import.js`
+  - modal import CSV
+  - hỗ trợ import `Unit Station`, `Cylinder CSV`, `Struct Data`
+  - sync dữ liệu import vào `project.excelVars` và/hoặc `project.unitConfig`
 
-src/js/codegen/kv-generator.js: Sinh KV/PLC code theo nhánh canvas legacy. Hỗ trợ multi-diagram, output section, device template, và translate instruction theo PLC profile. Nếu `kv_main.hbs` có trong localStorage → toàn bộ output được render qua Handlebars với context đầy đủ (project, diagrams, steps). Nếu `kv_step.hbs` có trong localStorage → dùng làm template per-step thay thế STEP_ACTIVATION_TEMPLATE / STEP_FEEDBACK_TEMPLATE (hai block phân cách bằng dòng `;;;`). Nếu template custom lỗi thì fallback về logic mặc định.
+### 4.3 Codegen
 
-src/js/codegen/sequence.js: Giải trình tự Grafcet (cgResolveSequence). Duyệt connections để tạo danh sách bước theo thứ tự đúng. Đây là primitive dùng chung cho cả KV generator và các bước build context của Unit Config.
+- `src/js/codegen/unit-config.js`
+  - engine generate IL từ unit config + project data + canvas
+  - có fallback build synthetic config từ `project.unitConfig` hoặc `project.excelVars`
 
-src/js/codegen/st-generator.js: Sinh IEC 61131-3 Structured Text (demo/stub). Dùng làm tham khảo cấu trúc. Nếu `st_main.hbs` có trong localStorage → toàn bộ output được render qua Handlebars. Fallback về logic mặc định nếu template lỗi.
+- `src/js/codegen/modal.js`
+  - modal preview/copy/download code
+  - target hiện tại chỉ có `unit-config` và `runtime-plan`
 
-src/js/codegen/templates-bundle.js: Nhúng toàn bộ nội dung file `.hbs` vào JS dưới dạng chuỗi literal (UC_TEMPLATE_BUNDLE + UC_PARTIAL_BUNDLE). Khai báo hàm `ucInjectBundledTemplates()` để biên dịch template và đăng ký Handlebars partials/helpers khi được gọi bởi unit-config.js. Phải tải TRƯỚC unit-config.js. Không tự chạy lúc load — chờ `UC_TEMPLATE_CACHE` được khởi tạo trong unit-config.js.
+- `src/js/codegen/template-manager.js`
+  - upload và validate template `.hbs`, lưu `localStorage`
 
-src/js/codegen/unit-config.js: Engine sinh Unit Config JSON (v3) và là nhánh codegen chính hiện tại cho target `Unit Config JSON`. File này tự tính flags hệ thống, IO hệ thống, admin addresses và build context từ `unitConfig` + project canvas. Địa chỉ signal vật lý `_SOL` / `_SNS` không hardcode trong JSON mà được quét từ Variable Table của diagrams. Khai báo `UC_TEMPLATE_CACHE = {}` rồi gọi `ucInjectBundledTemplates()` ngay lập tức để nạp bundle vào cache. Nếu bundle chưa có (templates-bundle.js chưa tải), fallback sang fetch `.hbs` từ thư mục templates khi page load. Luồng Unit Config hỗ trợ strict template rendering để chặn generate khi template library invalid.
+- `src/js/codegen/templates-bundle.js`
+  - bundle template mặc định vào JS để chạy offline/file://
 
-src/templates/*.hbs: Handlebars templates định nghĩa nội dung mã IL cho từng section của Unit Config (Error, Manual, Origin, Auto, main-output/output). Mỗi template nhận context object với đầy đủ thông tin unit/device/steps/station flows. Ưu tiên sửa file .hbs khi cần đổi section output mà không muốn sửa JS generator.
+- `src/js/codegen/runtime-*.js`
+  - runtime metadata, resolver, planner, output binding, debug preview
 
-src/templates/devices/*.hbs: Handlebars partials cho từng loại thiết bị (cylinder, motor, servo). Được đăng ký qua `Handlebars.registerPartial` và gọi từ `main-output.hbs`.
+- `src/js/codegen/sequence.js`
+  - resolve sequence từ canvas
 
-src/js/codegen/modal.js: Modal UI "Generate Code" — chọn target, preview code, download/copy. Có 3 nhánh chính trong UI: canvas legacy (`kv-*`, `melsec`, `omron`, `siemens`, `st`), `Unit Config JSON`, và `Runtime Plan [debug]`. Khi chọn target `Unit Config JSON`: hiện panel load file JSON, radio button chọn unit trong project, kiểm tra template health qua Template Manager rồi gọi `cgGenerateFromUnitConfig()` với `selectedUnitId` và `strictTemplates: true`. Nếu template library invalid thì preview/copy/download bị chặn.
+- `src/js/codegen/kv-generator.js`, `src/js/codegen/st-generator.js`
+  - vẫn còn trong codebase nhưng không phải target chính trong modal hiện tại
 
-src/js/codegen/template-manager.js: Hệ thống template động. Cho phép người dùng nạp file `.hbs` từ máy tính qua `<input type="file">`, validate bằng `Handlebars.compile()`, lưu vào localStorage. Đối với Unit Config, file upload được quản lý qua registry explicit thay vì suy đoán theo tên file: `error.hbs`, `manual.hbs`, `origin.hbs`, `auto.hbs`, `main-output.hbs`, `output.hbs`, `step-body.hbs`, `cylinder.hbs`, `servo.hbs`, `motor.hbs`. Registry này điều khiển localStorage key dạng `custom_tpl_uc_*`, đăng ký partial, UI state, migration từ legacy keys và template health validation. Legacy path cho `kv_main.hbs`, `kv_step.hbs`, `st_main.hbs` vẫn được giữ riêng.
+## 5. Mô hình dữ liệu hiện tại
 
-src/js/codegen/runtime-metadata.js: Chuẩn hóa và đọc metadata runtime/device để phục vụ planning/debug.
+### 5.1 `project`
 
-src/js/codegen/runtime-resolver.js: Resolve dữ liệu runtime từ diagram, action, transition, signal mapping và unit config.
+`project` trong `store.js` hiện có các nhánh quan trọng sau:
 
-src/js/codegen/runtime-planner.js: Xây runtime execution plan từ sequence, metadata và binding information.
+- `units: []`
+- `diagrams: []`
+- `devices: []`
+- `excelVars: []`
+- `unitConfig: {}`
 
-src/js/codegen/output-binding-planner.js: Tạo output binding plan cho từng thiết bị/signal trong runtime path.
+### 5.2 Ba lớp dữ liệu cần phân biệt
 
-src/js/codegen/runtime-debug.js: Dựng preview `Runtime Plan [debug]` trong modal để kiểm tra pipeline runtime mà không generate IL production.
+1. `state.vars[]`
+   - biến local của diagram đang mở
+   - được lưu bằng `saveDiagramData()`
+   - hiển thị trong `VARIABLE TABLE`
 
-src/css/grafcet-studio.css: Toàn bộ giao diện: màu sắc CSS variables, layout panel, toolbar, SVG element styles.
+2. `project.excelVars[]`
+   - dữ liệu thiết bị/struct import ở cấp project
+   - thường dùng cho `Cylinder` hoặc các struct tùy chỉnh
+   - được hiển thị trong `GLOBAL VARIABLES`
 
-4.Cấu trúc nối tiếp: Một Step luôn phải được nối tới một Transition, và một Transition luôn phải dẫn đến một Step. Không bao giờ nối trực tiếp Step-Step hoặc Transition-Transition.
+3. `project.unitConfig`
+   - dữ liệu Unit Station theo key unit label
+   - dùng trực tiếp cho `Unit Config` codegen
+   - cũng được hiển thị trong `GLOBAL VARIABLES`
 
-Quy tắc Logic (Logic Constraints)
+### 5.3 Quy tắc merged view
 
-Biến trạng thái: Mỗi Step có một biến Boolean (ví dụ: X1, X2) để biểu thị trạng thái kích hoạt.
+- `getLocalVars()` chỉ trả về `state.vars`
+- `getVars()` trả về `local vars + project.excelVars`
+- `getVars()` không merge `project.unitConfig`
+- `project.unitConfig` được dùng riêng ở nhánh Global Vars và Unit Config codegen
 
-Điều kiện chuyển tiếp: Một Transition chỉ nổ (fire) khi Step trước nó đang kích hoạt VÀ điều kiện logic của Transition đó đúng.
+Điểm này rất quan trọng: không được nhầm `unitConfig` là một phần của `getVars()`.
 
-5.Hướng dẫn phát triển cho AI
+## 6. UI hiện tại
 
-- UI/UX: Sử dụng Vanilla JavaScript (ES6+, "use strict") — không dùng framework như React/Vue trừ khi được yêu cầu. Tương tác trực tiếp với DOM thông qua ID và Class định nghĩa trong src/index.html. Không dùng bundler — tất cả JS được tải qua thẻ `<script>` trong HTML. **Sidebar** có 3 tab: `proj` (Project Tree), `vars` (🌐 Global Vars), `tools` (Tools Palette). Dùng `switchSidebarTab('proj'|'vars'|'tools')` trong panels.js để chuyển tab.
+### 6.1 Sidebar trái
 
-- Data Model: Sơ đồ được lưu trữ dưới dạng object `state` gồm `{steps, transitions, parallels, connections}`. Biến global `project` (trong src/js/core/store.js) chứa toàn bộ project kể cả tất cả diagrams. **Biến thiết bị có 2 nguồn:** `state.vars[]` (local diagram, lưu qua `saveDiagramData`) và `project.excelVars[]` (project-level từ Excel import, lưu qua `saveProject`). Mọi tra cứu biến đều dùng `getVars()` — hàm merged view trong `vars.js`.
+Sidebar hiện chỉ có 2 tab:
 
-- Thứ tự tải script (quan trọng): phải theo đúng `src/index.html`. Ở thời điểm hiện tại, phần codegen được tải theo thứ tự: `codegen/kv-generator.js` → `codegen/sequence.js` → `codegen/st-generator.js` → `codegen/templates-bundle.js` → `codegen/unit-config.js` → `codegen/template-manager.js` → `codegen/runtime-metadata.js` → `codegen/runtime-resolver.js` → `codegen/runtime-planner.js` → `codegen/output-binding-planner.js` → `codegen/runtime-debug.js` → `codegen/modal.js`. Các biến global phải được khai báo trước khi dùng.
+- `proj`
+- `tools`
 
-- Codegen: Phải xác định đúng target trước khi sửa.
-	- Nhánh canvas legacy (`kv-*`, `melsec`, `omron`, `siemens`, `st`): làm việc chủ yếu với `src/js/codegen/kv-generator.js`, `src/js/codegen/st-generator.js`, và `src/js/codegen/sequence.js`.
-	- Nhánh `Unit Config JSON`: làm việc chủ yếu với `src/js/codegen/unit-config.js`, `src/js/codegen/template-manager.js`, `src/js/codegen/templates-bundle.js`, và các file `.hbs` trong `src/templates/`.
-	- Nhánh `Runtime Plan [debug]`: làm việc với `runtime-metadata.js`, `runtime-resolver.js`, `runtime-planner.js`, `output-binding-planner.js`, `runtime-debug.js`.
-	- Với Unit Config, thứ tự bước vẫn lấy từ canvas/sequence; JSON không phải nguồn sự thật cho flow order.
+Không còn sidebar tab `vars` như một số tài liệu cũ mô tả.
 
-- Templates: Khi tùy chỉnh nội dung mã IL của Unit Config (nội dung từng section), ưu tiên chỉnh sửa file `.hbs` trong `src/templates/` thay vì sửa JS generator. `unit-config.js` sẽ nạp bundled templates trước; nếu bundle chưa sẵn thì mới fetch `.hbs` khi page load. Nếu cần thêm Handlebars helper, đăng ký trong hàm `ucRegisterHandlebarsHelpers()` ở `src/js/codegen/unit-config.js`. Người dùng cũng có thể nạp file `.hbs` tùy chỉnh trực tiếp từ Template Manager để ghi đè template mặc định mà không cần sửa source code.
-	- Với Unit Config preview trong modal, template health được kiểm tra trước khi generate.
-	- Khi modal đang chạy strict template mode, template lỗi hoặc thiếu partial bắt buộc phải chặn preview/copy/download, không fallback im lặng.
+### 6.2 Global Variables panel
 
-- Modules: Khi thêm tính năng mới, ưu tiên tách logic vào đúng module trong src/js/editor/ hoặc src/js/codegen/ tương ứng với chức năng, thay vì tập trung vào một file lớn.
+`GLOBAL VARIABLES` là một panel riêng trong main area, không phải tab sidebar.
 
-- Biến global: Khai báo biến global MỚI trong src/js/core/constants.js. Không khai báo lại biến đã có ở file khác.
+Nó có:
 
-6.Stack kỹ thuật
+- ô filter `#gvt-search`
+- count `#gvt-count`
+- nút `📥 Import` để mở `showExcelImportModal()`
+- bảng `#gvt-tbody`
 
-- Ngôn ngữ: JavaScript (ES6+, "use strict"), HTML5, CSS3.
+### 6.3 Variable Table panel
 
-- Đồ họa: SVG (inline, tạo động qua DOM). Xem src/js/editor/canvas.js.
+`VARIABLE TABLE` phía dưới canvas chỉ quản lý `state.vars` của diagram hiện tại.
 
-- Lưu trữ: localStorage (project state). Xem src/js/core/store.js.
+Nó có:
 
-- Templating: Handlebars.js v4.7.9 — bản **local** tại `src/js/vendor/handlebars.min.js` (không dùng CDN, hỗ trợ offline và file://). Nội dung template `.hbs` của Unit Config được nhúng inline vào `src/js/codegen/templates-bundle.js`. Khi target là `Unit Config JSON`, `ucInjectBundledTemplates()` biên dịch bundle vào `UC_TEMPLATE_CACHE`; `unit-config.js` dùng cache đó để sinh mã IL. Nếu bundle chưa sẵn thì `unit-config.js` có thể fetch từ thư mục `templates/` khi page load. **Template động (runtime override):** `template-manager.js` cho phép nạp file `.hbs` từ máy tính, lưu vào localStorage theo registry Unit Config (`custom_tpl_uc_*`) hoặc legacy key (`custom_tpl_<filename>`), tự động ghi đè `UC_TEMPLATE_CACHE` và đăng ký Handlebars partials tương ứng. Hàm `tmGetCustomTemplate(filename)` trả về string template tùy chỉnh hoặc null. Helpers hiện có: `pad`, `eq`, `padStart2`. Xem `src/js/codegen/templates-bundle.js`, `src/js/codegen/unit-config.js`, và `src/js/codegen/template-manager.js`.
+- add/edit/delete local vars
+- import/export CSV cho local vars
+- nút `📥 Excel` mở cùng modal import project-level data
+
+## 7. Global Vars behavior
+
+### 7.1 Nguồn dữ liệu hiển thị
+
+`renderGlobalVarTable()` dùng `gvtGetEntries()` để trộn:
+
+- `project.excelVars`
+- `project.unitConfig`
+
+### 7.2 Rule chống trùng Unit Station
+
+Hiện đã có rule chống hiển thị trùng:
+
+- nếu một entry trong `project.excelVars` có `format === 'Unit Station'`
+- và `project.unitConfig[v.label]` đã tồn tại
+- thì Global Vars chỉ hiện bản `unitConfig`
+
+Mục tiêu là tránh một lần import `Unit Station` qua Struct Data tạo ra 2 dòng cùng tên.
+
+### 7.3 Edit signal address trực tiếp
+
+Global Vars cho phép sửa trực tiếp địa chỉ signal:
+
+- với entry `excel`: ghi vào `project.excelVars[idx].signalAddresses[sig.id]`
+- với entry `unit`: ghi vào nested path trong `project.unitConfig[key]`
+
+Sau khi sửa sẽ `saveProject()`.
+
+## 8. Struct Data và tự đồng bộ
+
+`store.js` có `syncStructDataFromProjectData()`.
+
+Chức năng:
+
+- nếu có `excelVars` format `Cylinder` mà chưa có device type `Cylinder`, tự đảm bảo type này tồn tại
+- nếu có `project.unitConfig`, tự đảm bảo tồn tại Struct Data type `Unit Station`
+- nếu có `excelVars` với format tùy chỉnh khác, có thể auto-create Struct Data type tương ứng từ `signalAddresses`
+
+Điều này có nghĩa:
+
+- import dữ liệu có thể làm thay đổi `project.devices`
+- không nên sửa flow này một cách cục bộ mà bỏ qua migration/sync trong `store.js`
+
+## 9. Import CSV hiện tại
+
+### 9.1 Modal import
+
+`showExcelImportModal()` hiện hỗ trợ 3 loại import:
+
+1. `Unit Station`
+2. `Cylinder CSV`
+3. `Struct Data`
+
+UI có radio `name="ei-import-type"` để chọn loại import.
+
+### 9.2 Import `Cylinder CSV`
+
+- parse qua `eiParseCylinderCSV()`
+- lưu vào `project.excelVars`
+- mỗi entry có `format: 'Cylinder'`
+- có canonical mapping cho `cyl_*`
+- validate địa chỉ bằng `EI_KV_ADDR_RE`
+
+### 9.3 Import `Unit Station`
+
+- parse qua `eiParseUnitCSV()`
+- ưu tiên đọc theo header name nếu file có header
+- fallback về schema cũ nếu không có header
+- lưu vào `project.unitConfig`
+
+Các cột hiện được hỗ trợ bao gồm:
+
+- `UnitName`
+- `UnitIndex`
+- `OriginBase`
+- `AutoBase`
+- `OriginFlag`
+- `AutoFlag`
+- `ManualFlag`
+- `ErrorFlag`
+- `Start`
+- `Stop`
+- `Reset`
+- `EStop`
+- `HomeDone`
+
+### 9.4 Import `Struct Data`
+
+- parse qua `eiParseStructCSV(rows, structTypeName)`
+- map cột theo thứ tự `signals[]` của Struct Data type đã chọn trong `project.devices`
+- lưu vào `project.excelVars`
+
+### 9.5 Special case: Struct Data = `Unit Station`
+
+Nếu import qua `Struct Data` và chọn đúng struct type `Unit Station` thì hệ thống sẽ:
+
+1. lưu raw row vào `project.excelVars`
+2. đồng thời sync sang `project.unitConfig`
+
+Đây là hành vi cố ý để codegen Unit Config vẫn chạy được.
+
+## 10. Code generation hiện tại
+
+### 10.1 Target đang hiển thị trong modal
+
+Trong `showGenerateCodeModal()`, select `#cg-target` hiện chỉ có:
+
+- `unit-config`
+- `runtime-plan`
+
+Nếu cần khôi phục legacy target khác, phải sửa trực tiếp `modal.js` thay vì dựa vào tài liệu cũ.
+
+### 10.2 Unit Config mode
+
+Khi target là `unit-config`:
+
+- ẩn Base MR input
+- ẩn Unit/Diagram selector kiểu legacy
+- hiện JSON files panel
+- hiện Template Manager
+
+### 10.3 Nguồn config hiệu lực
+
+`modal.js` dùng helper `cgUCGetEffectiveConfig(selectedUnitId)`.
+
+Thứ tự fallback hiện tại:
+
+1. `UC_UNIT_CONFIG` nếu user load file JSON
+2. synthetic config build từ `project.unitConfig`
+
+Trong `unit-config.js`, `ucBuildSyntheticConfig(selectedUnitId)` còn có fallback sâu hơn:
+
+- lookup từ `project.units`
+- fallback theo key trực tiếp trong `project.unitConfig`
+- fallback cuối từ `project.excelVars` có `format === 'Unit Station'`
+
+Điều này giúp generate vẫn chạy dù:
+
+- chưa load file `infeed-unit.json`
+- project chưa có `project.units`
+- dữ liệu Unit Station chỉ mới được import qua Struct Data
+
+### 10.4 Unit selector fallback
+
+`cgUCBuildUnitSelector()` trong `modal.js` hiện:
+
+- ưu tiên render unit từ `project.units`
+- nếu `project.units` rỗng thì fallback sang key của `project.unitConfig`
+
+### 10.5 Template health
+
+Preview/copy/download ở Unit Config mode bị chặn nếu template library invalid.
+
+Phải kiểm tra qua `template-manager.js` và các `.hbs` nếu preview bị block.
+
+### 10.6 Runtime Plan target
+
+`runtime-plan` dùng để debug pipeline runtime, không phải output IL production.
+
+## 11. Template system
+
+### 11.1 Bundled templates
+
+Template mặc định nằm ở:
+
+- `src/templates/*.hbs`
+- `src/templates/devices/*.hbs`
+
+Và được nhúng vào `src/js/codegen/templates-bundle.js`.
+
+### 11.2 Dynamic overrides
+
+`template-manager.js` cho phép upload các file `.hbs` và override bằng `localStorage`.
+
+Các tên template Unit Config đang được hỗ trợ:
+
+- `error.hbs`
+- `manual.hbs`
+- `origin.hbs`
+- `auto.hbs`
+- `main-output.hbs`
+- `output.hbs`
+- `step-body.hbs`
+- `cylinder.hbs`
+- `servo.hbs`
+- `motor.hbs`
+
+Legacy keys vẫn còn:
+
+- `kv_main.hbs`
+- `kv_step.hbs`
+- `st_main.hbs`
+
+### 11.3 Nguyên tắc sửa template
+
+- nếu thay đổi format nội dung IL, ưu tiên sửa `.hbs`
+- chỉ sửa JS generator khi cần thay đổi context, planner, validation, lookup, hoặc helper
+
+## 12. Các file nên kiểm tra trước khi sửa tính năng
+
+### 12.1 Nếu lỗi import / global vars
+
+- `src/js/editor/excel-import.js`
+- `src/js/editor/vars.js`
+- `src/js/core/store.js`
+
+### 12.2 Nếu lỗi flow / sequence / step order
+
+- `src/js/codegen/sequence.js`
+- `src/js/core/graph-utils.js`
+- dữ liệu diagram trong `project.diagrams` và `loadDiagramData()`
+
+### 12.3 Nếu lỗi Unit Config generate
+
+- `src/js/codegen/modal.js`
+- `src/js/codegen/unit-config.js`
+- `src/js/codegen/template-manager.js`
+- `src/templates/*.hbs`
+
+### 12.4 Nếu lỗi runtime debug
+
+- `src/js/codegen/runtime-metadata.js`
+- `src/js/codegen/runtime-resolver.js`
+- `src/js/codegen/runtime-planner.js`
+- `src/js/codegen/output-binding-planner.js`
+- `src/js/codegen/runtime-debug.js`
+
+## 13. Nguyên tắc sửa code trong dự án này
+
+- Dùng Vanilla JS, không thêm framework.
+- Ưu tiên sửa đúng module sở hữu hành vi.
+- Không thêm global mới bừa bãi ngoài `constants.js` nếu không cần.
+- Không dựa vào tài liệu cũ khi hành vi thực tế đã khác.
+- Với bug import/unit/global vars, phải kiểm tra cả ba nơi: import path, persistence path, render path.
+- Với bug codegen, phải xác định đúng nhánh: modal selection, effective config, template health, generator.
+- Khi một hành vi có nhiều nguồn dữ liệu, phải ghi rõ ưu tiên và fallback thay vì vá tại UI.
+
+## 14. Các lưu ý dễ nhầm
+
+- `GLOBAL VARIABLES` không phải sidebar tab `vars`.
+- `VARIABLE TABLE` không phải nơi hiển thị project-level imported data.
+- `getVars()` không bao gồm `project.unitConfig`.
+- `Unit Station` import có thể đi vào `project.unitConfig` trực tiếp hoặc đi qua `project.excelVars` rồi sync.
+- Một số tài liệu cũ nói modal có nhiều target PLC legacy; UI hiện tại không còn hiển thị như vậy.
+- `project.units` có thể rỗng nhưng Unit Config generate vẫn phải chạy được nhờ fallback.
+
+## 15. Tài liệu liên quan
+
+- `docs/gencode.md`
+  - mô tả sâu về engine Unit Config đời cũ và nguyên lý generate
+
+- `docs/excel-driven-config-plan.md`
+  - ghi lại ý tưởng thiết kế import Excel và data pipeline
+
+- `docs/codegen-runtime-handoff.md`
+  - tài liệu handoff cho runtime/codegen path
+
+Khi cập nhật các tài liệu này, hãy đồng bộ với hành vi hiện tại trong `src/` thay vì copy nguyên trạng từ tài liệu cũ.

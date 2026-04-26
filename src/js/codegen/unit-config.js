@@ -427,8 +427,55 @@ function ucBuildSyntheticConfig(selectedUnitId) {
   }
   if (!unitObj && units.length > 0) unitObj = units[0];
 
-  const unitLabel = unitObj ? (unitObj.name || unitObj.id) : 'Unit';
-  const ucEntry   = unitConfig[unitLabel] || unitConfig[unitObj && unitObj.id] || {};
+  const unitLabel = unitObj ? (unitObj.name || unitObj.id) : null;
+  let ucEntry = (unitLabel && unitConfig[unitLabel])
+              || (unitObj && unitConfig[unitObj.id])
+              || {};
+
+  // Fallback: khi project.units trống hoặc key không khớp, tìm trực tiếp trong unitConfig
+  if (!Object.keys(ucEntry).length) {
+    if (selectedUnitId && selectedUnitId !== '__none__' && unitConfig[selectedUnitId]) {
+      ucEntry = unitConfig[selectedUnitId];
+    } else {
+      const firstKey = Object.keys(unitConfig)[0];
+      if (firstKey) ucEntry = unitConfig[firstKey];
+    }
+  }
+
+  // Fallback cuối: scan excelVars với format = 'Unit Station'
+  if (!Object.keys(ucEntry).length) {
+    const excelVarsAll = (typeof project !== 'undefined' && project.excelVars) || [];
+    const unitVars = excelVarsAll.filter(function(v) { return v && v.format === 'Unit Station'; });
+    let uv = null;
+    if (selectedUnitId && selectedUnitId !== '__none__') {
+      uv = unitVars.find(function(v) { return v.label === selectedUnitId; });
+    }
+    if (!uv && unitVars.length > 0) uv = unitVars[0];
+    if (uv && uv.signalAddresses) {
+      const sa = uv.signalAddresses;
+      ucEntry = {
+        label:          uv.label,
+        unitIndex:      0,
+        originBaseAddr: sa.originBaseAddr || '',
+        autoBaseAddr:   sa.autoBaseAddr   || '',
+        flags: {
+          flagOrigin: sa.flagOrigin || '',
+          flagAuto:   sa.flagAuto   || '',
+          flagManual: sa.flagManual || '',
+          flagError:  sa.flagError  || ''
+        },
+        io: {
+          btnStart:  sa.btnStart  || '',
+          hmiStop:   sa.hmiStop   || '',
+          btnReset:  sa.btnReset  || '',
+          eStop:     sa.eStop     || '',
+          outHomed:  sa.outHomed  || ''
+        }
+      };
+    }
+  }
+
+  if (!Object.keys(ucEntry).length) return null;
 
   // Devices: auto-detect từ excelVars (Cylinder type)
   const excelVars = (typeof project !== 'undefined' && project.excelVars) || [];
@@ -438,9 +485,10 @@ function ucBuildSyntheticConfig(selectedUnitId) {
       return { kind: 'cylinder', id: v.label, label: v.label, index: i };
     });
 
+  const effectiveLabel = unitLabel || ucEntry.label || Object.keys(unitConfig).find(k => unitConfig[k] === ucEntry) || 'Unit';
   return {
     unit: {
-      label:          unitLabel,
+      label:          effectiveLabel,
       unitIndex:      ucEntry.unitIndex      != null ? ucEntry.unitIndex      : 0,
       originBaseAddr: ucEntry.originBaseAddr || '@MR100',
       autoBaseAddr:   ucEntry.autoBaseAddr   || '@MR300',
@@ -1832,6 +1880,16 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   }
   const strictTemplates = !!(options && options.strictTemplates);
   const addressMode     = (options && options.addressMode) || 'linear';
+  const requireUnitBindings = options ? options.requireUnitBindings !== false : true;
+
+  if (requireUnitBindings) {
+    const u = unitConfig.unit || {};
+    const io = (u.overrides && u.overrides.io) || u.io || {};
+    const flags = (u.overrides && u.overrides.flags) || u.flags || {};
+    if (!Object.keys(io).length || !Object.keys(flags).length) {
+      throw new Error('Thiếu cấu hình Unit IO/Flags. Vui lòng load Unit Config JSON hợp lệ hoặc import Unit CSV trước khi Generate Code.');
+    }
+  }
 
   // v3: kiểm tra schema version để hiển thị đúng trong header
   const schemaVer = unitConfig.unit?.overrides != null

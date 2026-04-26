@@ -389,7 +389,10 @@ const GVT_UNIT_SIGNALS = [
 ];
 
 function gvtGetEntries() {
-  const excelEntries = (project.excelVars || []).map(function(v, idx) {
+  const unitConfig = project.unitConfig || {};
+  const excelEntries = (project.excelVars || []).filter(function(v) {
+    return !(v && v.format === 'Unit Station' && unitConfig[v.label]);
+  }).map(function(v, idx) {
     return {
       source: 'excel',
       key: idx,
@@ -398,8 +401,8 @@ function gvtGetEntries() {
       data: v,
     };
   });
-  const unitEntries = Object.keys(project.unitConfig || {}).map(function(key) {
-    const cfg = project.unitConfig[key] || {};
+  const unitEntries = Object.keys(unitConfig).map(function(key) {
+    const cfg = unitConfig[key] || {};
     return {
       source: 'unit',
       key: key,

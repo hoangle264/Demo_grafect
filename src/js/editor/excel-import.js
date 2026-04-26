@@ -20,18 +20,12 @@
 //    Col 10: CoilA       — output coil A (extend)
 //    Col 11: CoilB       — output coil B (retract)
 //
-//  CSV Unit Station Schema (11 cột cố định):
-//    Col 0 : UnitName    — nhãn unit (VD: Infeed)
-//    Col 1 : UnitIndex   — số thứ tự unit (0, 1, 2, ...)
-//    Col 2 : OriginFlag  — @MR địa chỉ origin flag
-//    Col 3 : AutoFlag    — @MR địa chỉ auto flag
-//    Col 4 : ManualFlag  — @MR địa chỉ manual flag
-//    Col 5 : ErrorFlag   — @MR địa chỉ error flag
-//    Col 6 : Start       — địa chỉ button start
-//    Col 7 : Stop        — địa chỉ button stop
-//    Col 8 : Reset       — địa chỉ button reset
-//    Col 9 : EStop       — địa chỉ emergency stop
-//    Col 10: HomeDone    — địa chỉ output homed
+//  CSV Unit Station Schema:
+//    - Ưu tiên đọc theo header name nếu file có dòng tiêu đề.
+//    - Hỗ trợ các cột quen thuộc: UnitName, UnitIndex, OriginBase, AutoBase,
+//      OriginFlag, AutoFlag, ManualFlag, ErrorFlag, Start, Stop, Reset,
+//      EStop, HomeDone.
+//    - Nếu không có header, vẫn fallback về schema cũ theo vị trí cột.
 //
 //  Quy tắc validate địa chỉ KV:
 //    /^@?(MR|LR|DM|CR|AR|WR|HR)\d+$/i — bắt buộc khớp (hoặc để trống)
@@ -177,7 +171,8 @@ function eiParseCylinderCSV(rows) {
 }
 
 /**
- * Parse CSV dạng Unit Station (11 cột cố định).
+ * Parse CSV dạng Unit Station.
+ * Ưu tiên map theo header name nếu có, fallback về các layout cũ theo vị trí cột.
  * Trả về array kết quả + errors.
  * @param {string[][]} rows
  * @returns {{ configs: object[], errors: string[] }}
@@ -186,27 +181,97 @@ function eiParseUnitCSV(rows) {
   const configs = [];
   const errors  = [];
 
+  function normHeader(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  const firstRow = rows[0] || [];
+  const firstRowNorm = firstRow.map(normHeader);
+  const hasHeader = firstRowNorm.includes('unitname') || firstRowNorm.includes('unit') || firstRowNorm.includes('label');
+  const headerIndexMap = {};
+  if (hasHeader) {
+    firstRowNorm.forEach(function(name, idx) {
+      if (name && headerIndexMap[name] == null) headerIndexMap[name] = idx;
+    });
+  }
+
+  function getByHeader(cols, names) {
+    for (let i = 0; i < names.length; i++) {
+      const idx = headerIndexMap[names[i]];
+      if (idx != null) return cols[idx] || '';
+    }
+    return '';
+  }
+
+  function looksLikeAddr(value) {
+    return EI_KV_ADDR_RE.test(String(value || '').trim());
+  }
+
   rows.forEach(function(cols, rowIdx) {
-    // Bỏ qua dòng header (nếu col[1] không phải số)
-    if (rowIdx === 0 && isNaN(parseInt(cols[1], 10))) return;
+    if (rowIdx === 0 && hasHeader) return;
+    // Bỏ qua dòng header legacy (nếu col[1] không phải số và có tên cột)
+    if (rowIdx === 0 && !hasHeader && isNaN(parseInt(cols[1], 10)) && !looksLikeAddr(cols[1])) return;
     if (cols.length < 1 || !cols[0].trim()) return;
 
-    const unitName  = cols[0].trim();
-    const unitIndex = parseInt(cols[1], 10);
-    if (!unitName || isNaN(unitIndex)) return;
+    const unitName = (hasHeader
+      ? getByHeader(cols, ['unitname', 'unit', 'label'])
+      : (cols[0] || '')).trim();
+    if (!unitName) return;
+
+    const unitIndexRaw = hasHeader
+      ? getByHeader(cols, ['unitindex', 'index'])
+      : (looksLikeAddr(cols[1]) ? '' : (cols[1] || ''));
+    const parsedUnitIndex = parseInt(unitIndexRaw, 10);
+    const unitIndex = Number.isNaN(parsedUnitIndex) ? configs.length : parsedUnitIndex;
+
+    const hasLegacyNoIndexLayout = !hasHeader && looksLikeAddr(cols[1]) && looksLikeAddr(cols[2]);
+
+    const originBaseAddr = hasHeader
+      ? getByHeader(cols, ['originbase', 'originbaseaddr'])
+      : (hasLegacyNoIndexLayout ? (cols[4] || cols[1] || '') : (cols[2] || ''));
+    const autoBaseAddr = hasHeader
+      ? getByHeader(cols, ['autobase', 'autobaseaddr'])
+      : (hasLegacyNoIndexLayout ? (cols[5] || cols[2] || '') : (cols[3] || ''));
+    const flagOrigin = hasHeader
+      ? getByHeader(cols, ['originflag', 'flagorigin'])
+      : (hasLegacyNoIndexLayout ? (cols[1] || '') : (cols[2] || ''));
+    const flagAuto = hasHeader
+      ? getByHeader(cols, ['autoflag', 'flagauto'])
+      : (hasLegacyNoIndexLayout ? (cols[2] || '') : (cols[3] || ''));
+    const flagManual = hasHeader
+      ? getByHeader(cols, ['manualflag', 'flagmanual'])
+      : (hasLegacyNoIndexLayout ? (cols[3] || '') : (cols[4] || ''));
+    const flagError = hasHeader
+      ? getByHeader(cols, ['errorflag', 'flagerror'])
+      : (hasLegacyNoIndexLayout ? (cols[6] || '') : (cols[5] || ''));
+    const btnStart = hasHeader
+      ? getByHeader(cols, ['start', 'btnstart'])
+      : (hasLegacyNoIndexLayout ? (cols[7] || '') : (cols[6] || ''));
+    const hmiStop = hasHeader
+      ? getByHeader(cols, ['stop', 'hmistop', 'btnstop'])
+      : (hasLegacyNoIndexLayout ? (cols[8] || '') : (cols[7] || ''));
+    const btnReset = hasHeader
+      ? getByHeader(cols, ['reset', 'btnreset'])
+      : (hasLegacyNoIndexLayout ? (cols[9] || '') : (cols[8] || ''));
+    const eStop = hasHeader
+      ? getByHeader(cols, ['estop'])
+      : (hasLegacyNoIndexLayout ? (cols[10] || '') : (cols[9] || ''));
+    const outHomed = hasHeader
+      ? getByHeader(cols, ['homedone', 'outhomed'])
+      : (hasLegacyNoIndexLayout ? (cols[11] || '') : (cols[10] || ''));
 
     const io = {
-      originBaseAddr:  cols[2]  || '',
-      autoBaseAddr:    cols[3]  || '',
-      flagOrigin:      cols[2]  || '',
-      flagAuto:        cols[3]  || '',
-      flagManual:      cols[4]  || '',
-      flagError:       cols[5]  || '',
-      btnStart:        cols[6]  || '',
-      hmiStop:         cols[7]  || '',
-      btnReset:        cols[8]  || '',
-      eStop:           cols[9]  || '',
-      outHomed:        cols[10] || '',
+      originBaseAddr:  originBaseAddr || '',
+      autoBaseAddr:    autoBaseAddr   || '',
+      flagOrigin:      flagOrigin     || '',
+      flagAuto:        flagAuto       || '',
+      flagManual:      flagManual     || '',
+      flagError:       flagError      || '',
+      btnStart:        btnStart       || '',
+      hmiStop:         hmiStop        || '',
+      btnReset:        btnReset       || '',
+      eStop:           eStop          || '',
+      outHomed:        outHomed       || '',
     };
 
     // Validate địa chỉ
@@ -404,6 +469,33 @@ function eiImportFromCSVText(csvText, csvType, options) {
       else project.excelVars.push(v);
     });
 
+    // Nếu struct là 'Unit Station', tự động sync sang project.unitConfig
+    if (selectedStructType === 'Unit Station') {
+      if (!project.unitConfig) project.unitConfig = {};
+      vars.forEach(function(v) {
+        const sa = v.signalAddresses || {};
+        project.unitConfig[v.label] = {
+          label:          v.label,
+          unitIndex:      Object.keys(project.unitConfig).length,
+          originBaseAddr: sa.originBaseAddr || '',
+          autoBaseAddr:   sa.autoBaseAddr   || '',
+          flags: {
+            flagOrigin: sa.flagOrigin || '',
+            flagAuto:   sa.flagAuto   || '',
+            flagManual: sa.flagManual || '',
+            flagError:  sa.flagError  || ''
+          },
+          io: {
+            btnStart:  sa.btnStart  || '',
+            hmiStop:   sa.hmiStop   || '',
+            btnReset:  sa.btnReset  || '',
+            eStop:     sa.eStop     || '',
+            outHomed:  sa.outHomed  || ''
+          }
+        };
+      });
+    }
+
     if (typeof syncStructDataFromProjectData === 'function') {
       syncStructDataFromProjectData();
     }
@@ -455,7 +547,23 @@ function showExcelImportModal() {
 
       <!-- Content -->
       <div style="padding:16px 20px;flex:1;overflow-y:auto;">
-        <div id="ei-struct-wrap" style="margin-bottom:14px;display:;">
+        <!-- Import Type selector -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">LOẠI DỮ LIỆU IMPORT</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="font-size:10px;color:var(--cyan);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="radio" name="ei-import-type" value="unit" onchange="eiOnImportTypeChange()"> Unit Station
+            </label>
+            <label style="font-size:10px;color:var(--cyan);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="radio" name="ei-import-type" value="cylinder" onchange="eiOnImportTypeChange()"> Cylinder CSV
+            </label>
+            <label style="font-size:10px;color:var(--cyan);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="radio" name="ei-import-type" value="struct" checked onchange="eiOnImportTypeChange()"> Struct Data
+            </label>
+          </div>
+        </div>
+
+        <div id="ei-struct-wrap" style="margin-bottom:14px;">
           <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">STRUCT DATA TYPE</div>
           <select id="ei-struct-type"
             style="width:100%;font-size:10px;color:var(--cyan);background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 8px;">
@@ -484,7 +592,7 @@ function showExcelImportModal() {
         </div>
 
         <!-- Schema hint -->
-        <div style="font-size:9px;color:var(--text3);line-height:1.6;">
+        <div id="ei-schema-hint" style="font-size:9px;color:var(--text3);line-height:1.6;">
           <b style="color:var(--cyan);">Struct Data CSV</b>: Label | Signal1 | Signal2 | ... (theo thứ tự signal của struct đã chọn)
         </div>
       </div>
@@ -499,6 +607,34 @@ function showExcelImportModal() {
     </div>`;
 
   document.body.appendChild(el);
+}
+
+// ─── Xử lý thay đổi loại import ─────────────────────────────────────────────
+function eiOnImportTypeChange() {
+  const radio = document.querySelector('input[name="ei-import-type"]:checked');
+  const type = radio ? radio.value : 'struct';
+  const structWrap = document.getElementById('ei-struct-wrap');
+  const schemaHint = document.getElementById('ei-schema-hint');
+  if (structWrap) structWrap.style.display = (type === 'struct') ? '' : 'none';
+  if (schemaHint) {
+    if (type === 'unit') {
+      schemaHint.innerHTML = '<b style="color:var(--cyan);">Unit Station CSV</b>: UnitName, OriginFlag, AutoFlag, ManualFlag, OriginBase, AutoBase, ErrorFlag, Start, Stop, Reset, EStop, HomeDone';
+    } else if (type === 'cylinder') {
+      schemaHint.innerHTML = '<b style="color:var(--cyan);">Cylinder CSV</b>: Label | địa chỉ theo thứ tự tín hiệu Cylinder';
+    } else {
+      schemaHint.innerHTML = '<b style="color:var(--cyan);">Struct Data CSV</b>: Label | Signal1 | Signal2 | ... (theo thứ tự signal của struct đã chọn)';
+    }
+  }
+  // Cập nhật stat nếu đã có file
+  if (_eiPendingText) {
+    const stat = document.getElementById('ei-stat');
+    if (stat) {
+      const rows = eiParseCSV(_eiPendingText);
+      const stName = (type === 'struct') ? (document.getElementById('ei-struct-type') || {value:''}).value : '';
+      const label = type === 'unit' ? 'Unit Station' : type === 'cylinder' ? 'Cylinder' : 'Struct Data' + (stName ? ' (' + stName + ')' : '');
+      stat.textContent = 'Mode: ' + label + '  (' + rows.length + ' dòng)';
+    }
+  }
 }
 
 // ─── Preview file trước khi import ───────────────────────────────────────────
@@ -527,9 +663,12 @@ function eiPreviewFile(inputEl) {
     const rows = eiParseCSV(_eiPendingText);
     const stat = document.getElementById('ei-stat');
     if (stat) {
+      const radio = document.querySelector('input[name="ei-import-type"]:checked');
+      const type = radio ? radio.value : 'struct';
       const st = document.getElementById('ei-struct-type');
-      const stName = st ? st.value : '';
-      stat.textContent = 'Mode: Struct Data' + (stName ? ' (' + stName + ')' : '') + '  (' + rows.length + ' dòng)';
+      const stName = (type === 'struct' && st) ? st.value : '';
+      const label = type === 'unit' ? 'Unit Station' : type === 'cylinder' ? 'Cylinder' : 'Struct Data' + (stName ? ' (' + stName + ')' : '');
+      stat.textContent = 'Mode: ' + label + '  (' + rows.length + ' dòng)';
     }
   };
   reader.readAsText(file);
@@ -538,7 +677,8 @@ function eiPreviewFile(inputEl) {
 // ─── Thực hiện import ─────────────────────────────────────────────────────────
 function eiDoImport() {
   if (!_eiPendingText) return;
-  const csvType = 'struct';
+  const radio = document.querySelector('input[name="ei-import-type"]:checked');
+  const csvType = radio ? radio.value : 'struct';
   const structTypeSel = document.getElementById('ei-struct-type');
   const selectedStructType = structTypeSel ? structTypeSel.value : '';
   const result    = eiImportFromCSVText(_eiPendingText, csvType, { structType: selectedStructType });
