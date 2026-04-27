@@ -313,7 +313,7 @@ function eiParseUnitCSV(rows) {
 
 /**
  * Parse CSV theo Struct Data đã chọn.
- * Col 0 = label instance, Col 1..N = address theo thứ tự signals trong struct.
+ * Nếu CSV có header, map address theo tên cột; nếu không có header, fallback theo thứ tự signals trong struct.
  * @param {string[][]} rows
  * @param {string} structTypeName
  * @returns {{ vars: object[], errors: string[] }}
@@ -331,8 +331,22 @@ function eiParseStructCSV(rows, structTypeName) {
     return { vars: [], errors: ['Struct Data "' + structTypeName + '" chưa có signal để map CSV.'] };
   }
 
+  const firstRow = rows[0] || [];
+  const hasHeader = firstRow.length > 1 && !EI_KV_ADDR_RE.test(firstRow[1]);
+  const headerMap = {};
+  const normalizeHeader = function(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  if (hasHeader) {
+    firstRow.forEach(function(header, idx) {
+      const key = normalizeHeader(header);
+      if (key) headerMap[key] = idx;
+    });
+  }
+
   rows.forEach(function(cols, rowIdx) {
-    if (rowIdx === 0 && cols.length > 1 && !EI_KV_ADDR_RE.test(cols[1])) return;
+    if (hasHeader && rowIdx === 0) return;
     if (cols.length < 1 || !cols[0].trim()) return;
 
     const id = cols[0].trim();
@@ -343,10 +357,12 @@ function eiParseStructCSV(rows, structTypeName) {
 
     signals.forEach(function(sig, i) {
       const sigId = sig.id || ('sig-' + i);
-      const addr = cols[i + 1] || '';
+      const sigName = sig.name || sigId;
+      const colIdx = hasHeader ? headerMap[normalizeHeader(sigName)] : (i + 1);
+      const addr = (colIdx !== undefined ? cols[colIdx] : '') || '';
       signalMap[sigId] = addr;
       if (addr && !eiValidateAddr(addr)) {
-        errors.push('Dòng ' + (rowIdx + 1) + ' [' + id + '.' + sigId + ']: địa chỉ không hợp lệ "' + addr + '"');
+        errors.push('Dòng ' + (rowIdx + 1) + ' [' + id + '.' + sigName + ']: địa chỉ không hợp lệ "' + addr + '"');
         hasError = true;
       }
     });
