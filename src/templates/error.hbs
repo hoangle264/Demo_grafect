@@ -34,8 +34,8 @@ OR   {{pad errFlagDirB}}; Error_{{{label}}}_{{{dirBName}}}
 {{/each}}
 {{/if}}
 {{!-- ─── Error flag + ErrStop latch ──────────────────────────────────── --}}
-SET  {{pad unit.flagError}}; Error
-LD   {{pad unit.flagError}}; Error
+SET  {{pad unit.ErrorFlag}}; Error
+LD   {{pad unit.ErrorFlag}}; Error
 SET  {{pad unit.flagErrStop}}; Operation Error Stop
 {{!-- ─── Reset sequence: btnReset → DIFU pulse → ZRES error flags ─────── --}}
 LD   {{pad unit.flagErrStop}}; Operation Error Stop
@@ -45,5 +45,5 @@ AND  {{pad unit.btnReset}}; btnReset
 {{#if unit.flagResetPulse}}
 DIFU {{pad unit.flagResetPulse}}; Reset Error
 LDP  {{pad unit.flagResetPulse}}; Reset Error
-ZRES {{{unit.flagError}}} {{{unit.flagResetEnd}}} ; Error  Reset Error
+ZRES {{{unit.ErrorFlag}}} {{{unit.flagResetEnd}}} ; Error  Reset Error
 {{/if}}

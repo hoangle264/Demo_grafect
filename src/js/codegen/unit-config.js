@@ -83,6 +83,55 @@ const UC_IO_OFFSETS = {
   outHomed:  20,
 };
 
+function ucGetUnitStructSignals() {
+  const devType = (typeof project !== 'undefined' && project.devices || [])
+    .find(function(d) { return d && d.name === 'Unit Station'; });
+  return (devType && devType.signals) || [];
+}
+
+function ucGetUnitStationVars() {
+  const excelVars = (typeof project !== 'undefined' && project.excelVars) || [];
+  return excelVars.filter(function(v) { return v && v.format === 'Unit Station'; });
+}
+
+function ucPickUnitStationVar(selectedUnitId) {
+  const unitVars = ucGetUnitStationVars();
+  if (!unitVars.length) return null;
+
+  const units = (typeof project !== 'undefined' && project.units) || [];
+  const unitObj = selectedUnitId && selectedUnitId !== '__none__'
+    ? units.find(function(u) { return u.id === selectedUnitId; })
+    : null;
+  const labels = [
+    selectedUnitId,
+    unitObj && unitObj.name,
+    unitObj && unitObj.id
+  ].filter(Boolean);
+
+  return unitVars.find(function(v) { return labels.includes(v.label); }) || unitVars[0];
+}
+
+function ucBuildUnitStructContext(selectedUnitId) {
+  const entry = ucPickUnitStationVar(selectedUnitId);
+  const unit = { label: (entry && entry.label) || '' };
+  if (!entry) return unit;
+
+  const signalAddresses = entry.signalAddresses || {};
+  const signals = ucGetUnitStructSignals();
+  signals.forEach(function(sig) {
+    if (!sig || !sig.name) return;
+    const addr = signalAddresses[sig.id];
+    if (addr !== undefined && addr !== '') unit[sig.name] = addr;
+  });
+
+  if (!signals.length) {
+    Object.keys(signalAddresses).forEach(function(key) {
+      if (unit[key] === undefined && signalAddresses[key] !== '') unit[key] = signalAddresses[key];
+    });
+  }
+  return unit;
+}
+
 /**
  * Admin addresses per cylinder — tính theo index thiết bị:
  *   hmiManBtn  = MR(HMI_MAN_BASE  + deviceIndex)
@@ -408,7 +457,7 @@ function ucGetUnitNameMismatchWarning(selectedUnitId, unitLabel) {
     return '';
   }
 
-  return 'WARNING: Tên Unit trong Project Tree ("' + treeUnitName + '") không trùng với tên Unit trong Global Variables / Unit CSV (' + csvUnitLabels.join(', ') + '). Kiểm tra lại mapping unit trước khi dùng code output.';
+  return 'WARNING: Tên Unit trong Project Tree ("' + treeUnitName + '") không trùng với tên Unit trong Global Variables / Unit Station Struct Data (' + csvUnitLabels.join(', ') + '). Kiểm tra lại mapping unit trước khi dùng code output.';
 }
 
 
@@ -428,50 +477,19 @@ function ucBuildSyntheticConfig(selectedUnitId) {
   if (!unitObj && units.length > 0) unitObj = units[0];
 
   const unitLabel = unitObj ? (unitObj.name || unitObj.id) : null;
-  let ucEntry = (unitLabel && unitConfig[unitLabel])
+  const unitVar = ucPickUnitStationVar(selectedUnitId);
+  let ucEntry = (unitVar && { label: unitVar.label, unitIndex: 0 })
+              || (unitLabel && unitConfig[unitLabel])
               || (unitObj && unitConfig[unitObj.id])
               || {};
 
-  // Fallback: khi project.units trống hoặc key không khớp, tìm trực tiếp trong unitConfig
+  // Fallback legacy: khi project.units trống hoặc key không khớp, tìm trực tiếp trong unitConfig
   if (!Object.keys(ucEntry).length) {
     if (selectedUnitId && selectedUnitId !== '__none__' && unitConfig[selectedUnitId]) {
       ucEntry = unitConfig[selectedUnitId];
     } else {
       const firstKey = Object.keys(unitConfig)[0];
       if (firstKey) ucEntry = unitConfig[firstKey];
-    }
-  }
-
-  // Fallback cuối: scan excelVars với format = 'Unit Station'
-  if (!Object.keys(ucEntry).length) {
-    const excelVarsAll = (typeof project !== 'undefined' && project.excelVars) || [];
-    const unitVars = excelVarsAll.filter(function(v) { return v && v.format === 'Unit Station'; });
-    let uv = null;
-    if (selectedUnitId && selectedUnitId !== '__none__') {
-      uv = unitVars.find(function(v) { return v.label === selectedUnitId; });
-    }
-    if (!uv && unitVars.length > 0) uv = unitVars[0];
-    if (uv && uv.signalAddresses) {
-      const sa = uv.signalAddresses;
-      ucEntry = {
-        label:          uv.label,
-        unitIndex:      0,
-        originBaseAddr: sa.originBaseAddr || '',
-        autoBaseAddr:   sa.autoBaseAddr   || '',
-        flags: {
-          flagOrigin: sa.flagOrigin || '',
-          flagAuto:   sa.flagAuto   || '',
-          flagManual: sa.flagManual || '',
-          flagError:  sa.flagError  || ''
-        },
-        io: {
-          btnStart:  sa.btnStart  || '',
-          hmiStop:   sa.hmiStop   || '',
-          btnReset:  sa.btnReset  || '',
-          eStop:     sa.eStop     || '',
-          outHomed:  sa.outHomed  || ''
-        }
-      };
     }
   }
 
@@ -486,16 +504,13 @@ function ucBuildSyntheticConfig(selectedUnitId) {
     });
 
   const effectiveLabel = unitLabel || ucEntry.label || Object.keys(unitConfig).find(k => unitConfig[k] === ucEntry) || 'Unit';
+  const unitStruct = ucBuildUnitStructContext(selectedUnitId);
   return {
     unit: {
       label:          effectiveLabel,
       unitIndex:      ucEntry.unitIndex      != null ? ucEntry.unitIndex      : 0,
-      originBaseAddr: ucEntry.originBaseAddr || '@MR100',
-      autoBaseAddr:   ucEntry.autoBaseAddr   || '@MR300',
-      overrides: {
-        flags: ucEntry.flags || {},
-        io:    ucEntry.io    || {},
-      }
+      originBaseAddr: unitStruct.OriginBase || ucEntry.originBaseAddr || '@MR100',
+      autoBaseAddr:   unitStruct.AutoBase   || ucEntry.autoBaseAddr   || '@MR300'
     },
     devices: devices
   };
@@ -1101,33 +1116,9 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const flagsResetEnd = ucMkMR(autoBaseNum + 115);
 
   // ── Unit context object (v3: flags và io từ resolver, không hardcode) ─────
-  const unit = {
-    label:           u.label || '',
-    // IO (v3: từ ucResolveUnitIO — tự tính theo unitIndex hoặc override)
-    eStop:           io.eStop           || '',
-    outHomed:        io.outHomed        || '',
-    btnStart:        io.btnStart        || '',
-    btnReset:        io.btnReset        || '',
-    hmiStart:        io.hmiStart        || '',
-    hmiStop:         io.hmiStop         || '',
-    hmiManual:       io.hmiManual       || '',
-    errorDMAddr:     io.errorDMAddr     || '',
-    hmiManBtnBase:   io.hmiManBtnBase   || '',
-    hmiManBtnEnd:    io.hmiManBtnEnd    || '',
-    // Flags (v3: từ ucResolveUnitFlags — mặc định UC_DEFAULT_FLAGS)
-    flagOrigin:      flags.flagOrigin,
-    flagAuto:        flags.flagAuto,
-    flagManual:      flags.flagManual,
-    flagManPEnd:     flags.flagManPEnd,
-    flagError:       flags.flagError,
-    flagErrStop:     flags.flagErrStop,
-    flagResetPulse:  flags.flagResetPulse,
-    flagResetEnd:    flags.flagResetEnd,
-    flagHomed:       flags.flagHomed,
-    flagsResetEnd:   flagsResetEnd,
-    originSeqEnd:    originSeqEnd,
-    autoTriggerAddr: u.autoTriggerAddr  || ''
-  };
+  const unit = Object.assign({
+    label: u.label || ''
+  }, ucBuildUnitStructContext(selectedUnitId));
 
   return {
     unit:         unit,
@@ -1882,12 +1873,12 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   const addressMode     = (options && options.addressMode) || 'linear';
   const requireUnitBindings = options ? options.requireUnitBindings !== false : true;
 
-  if (requireUnitBindings) {
+  if (requireUnitBindings && !ucGetUnitStationVars().length) {
     const u = unitConfig.unit || {};
     const io = (u.overrides && u.overrides.io) || u.io || {};
     const flags = (u.overrides && u.overrides.flags) || u.flags || {};
     if (!Object.keys(io).length || !Object.keys(flags).length) {
-      throw new Error('Thiếu cấu hình Unit IO/Flags. Vui lòng load Unit Config JSON hợp lệ hoặc import Unit CSV trước khi Generate Code.');
+      throw new Error('Thiếu cấu hình Unit IO/Flags. Vui lòng load Unit Config JSON hợp lệ hoặc import Struct Data Unit Station trước khi Generate Code.');
     }
   }
 
@@ -1926,13 +1917,15 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
     lines.push('');
   }
 
-  // v3: chèn IO mapping summary để dễ kiểm tra
-  lines.push('; ── IO / FLAGS SUMMARY (v3 auto-resolved) ────────────────');
-  lines.push('; flags: origin=' + ctx.unit.flagOrigin + '  auto=' + ctx.unit.flagAuto +
-             '  manual=' + ctx.unit.flagManual + '  error=' + ctx.unit.flagError +
-             '  homed=' + ctx.unit.flagHomed);
-  lines.push('; io:    eStop=' + (ctx.unit.eStop||'?') + '  btnStart=' + (ctx.unit.btnStart||'?') +
-             '  btnReset=' + (ctx.unit.btnReset||'?') + '  outHomed=' + (ctx.unit.outHomed||'?'));
+  lines.push('; ── UNIT STATION STRUCT DATA ──────────────────────────');
+  const unitFieldKeys = Object.keys(ctx.unit || {}).filter(function(key) { return key !== 'label'; });
+  if (unitFieldKeys.length) {
+    unitFieldKeys.forEach(function(key) {
+      lines.push('; unit.' + key + '=' + (ctx.unit[key] || ''));
+    });
+  } else {
+    lines.push('; No Unit Station Struct Data fields imported.');
+  }
   ctx.cylinders.forEach(function(cy) {
     lines.push('; ' + cy.id + ':  ' +
       'outDirA(' + cy.dirAName + ')=' + (cy.outDirA||'?') +

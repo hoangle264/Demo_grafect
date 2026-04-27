@@ -390,9 +390,10 @@ const GVT_UNIT_SIGNALS = [
 
 function gvtGetEntries() {
   const unitConfig = project.unitConfig || {};
-  const excelEntries = (project.excelVars || []).filter(function(v) {
-    return !(v && v.format === 'Unit Station' && unitConfig[v.label]);
-  }).map(function(v, idx) {
+  const hasExcelUnitStation = (project.excelVars || []).some(function(v) {
+    return v && v.format === 'Unit Station';
+  });
+  const excelEntries = (project.excelVars || []).map(function(v, idx) {
     return {
       source: 'excel',
       key: idx,
@@ -401,7 +402,7 @@ function gvtGetEntries() {
       data: v,
     };
   });
-  const unitEntries = Object.keys(unitConfig).map(function(key) {
+  const unitEntries = hasExcelUnitStation ? [] : Object.keys(unitConfig).map(function(key) {
     const cfg = unitConfig[key] || {};
     return {
       source: 'unit',
@@ -428,6 +429,22 @@ function gvtSetUnitAddr(cfg, path, value) {
     cur = cur[parts[i]];
   }
   cur[parts[parts.length - 1]] = value;
+}
+
+function gvtGetUnitSigList() {
+  const devType = (project.devices||[]).find(d=>d.name==='Unit Station');
+  const devSigs = devType ? (devType.signals||[]) : [];
+  if (!devSigs.length) return GVT_UNIT_SIGNALS;
+
+  const unitPaths = GVT_UNIT_SIGNALS.reduce(function(map, sig) {
+    map[sig.id] = sig.path;
+    return map;
+  }, {});
+  return devSigs.map(function(sig) {
+    return Object.assign({}, sig, {
+      path: unitPaths[sig.id] || sig.path || sig.id
+    });
+  });
 }
 
 function gvtGetSigList(v) {
@@ -488,7 +505,7 @@ function renderGlobalVarTable() {
 
   filtered.forEach(function(entry){
     const v = entry.data;
-    const sigList = entry.source === 'unit' ? GVT_UNIT_SIGNALS : gvtGetSigList(v);
+    const sigList = entry.source === 'unit' ? gvtGetUnitSigList() : gvtGetSigList(v);
     const sAddr = v.signalAddresses||{};
     const isExpanded = v._sigExpanded !== false;
 

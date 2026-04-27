@@ -223,7 +223,14 @@ function cgUCBuildUnitSelector() {
   }
 
   if (!items.length) {
-    // Fallback: lấy từ project.unitConfig khi project.units chưa có
+    const unitVars = (typeof ucGetUnitStationVars === 'function') ? ucGetUnitStationVars() : [];
+    unitVars.forEach(function(v) {
+      if (v && v.label) items.push({ id: v.label, label: v.label, count: 0 });
+    });
+  }
+
+  if (!items.length) {
+    // Legacy fallback: lấy từ project.unitConfig khi project.units chưa có
     const unitCfg = (typeof project !== 'undefined' && project.unitConfig) || {};
     Object.keys(unitCfg).forEach(function(key) {
       items.push({ id: key, label: key, count: 0 });
@@ -377,7 +384,8 @@ function cgUCEnsureTemplateHealth(actionLabel) {
 function cgUCGetEffectiveConfig(selectedUnitId) {
   if (UC_UNIT_CONFIG) return UC_UNIT_CONFIG;
   const hasUnitConfig = (typeof project !== 'undefined' && project.unitConfig && Object.keys(project.unitConfig).length > 0);
-  if (!hasUnitConfig || typeof ucBuildSyntheticConfig !== 'function') return null;
+  const hasUnitStationVars = (typeof ucGetUnitStationVars === 'function' && ucGetUnitStationVars().length > 0);
+  if ((!hasUnitConfig && !hasUnitStationVars) || typeof ucBuildSyntheticConfig !== 'function') return null;
   return ucBuildSyntheticConfig(selectedUnitId);
 }
 
@@ -415,7 +423,7 @@ function cgUpdatePreview() {
     const effectiveConfig = cgUCGetEffectiveConfig(selectedUnitId);
 
     if (!effectiveConfig) {
-      pre.textContent = '; Vui lòng load Unit Config JSON (infeed-unit.json)\n; hoặc import đủ dữ liệu Unit CSV + thiết bị để tạo config.';
+      pre.textContent = '; Vui lòng load Unit Config JSON (infeed-unit.json)\n; hoặc import Struct Data Unit Station + thiết bị để tạo config.';
       if (stat) stat.textContent = 'Unit Config mode — thiếu cấu hình Unit';
       return;
     }
@@ -547,7 +555,7 @@ function cgUCUpdateStatus() {
       : (cfg.cylinders?.length || 0);
     const schemaVer = (cfg.unit?.overrides != null || cfg.devices != null) ? 'v3' : 'v2';
     const idxStr = cfg.unit?.unitIndex != null ? ' idx=' + cfg.unit.unitIndex : '';
-    const sourceLabel = UC_UNIT_CONFIG ? 'Unit Config' : 'Unit CSV';
+    const sourceLabel = UC_UNIT_CONFIG ? 'Unit Config' : 'Unit Struct';
     parts.push(`✓ ${sourceLabel} [${schemaVer}]: ${label}${idxStr}  (${devCount} device(s))`);
   }
   if (UC_CYLINDER_TYPES) {
@@ -561,7 +569,7 @@ function cgUCUpdateStatus() {
   if (libKeys.length) {
     parts.push(`Device Library: ${libKeys.length} type(s) loaded`);
   }
-  el.textContent = parts.length ? parts.join('  |  ') : 'Load Unit Config JSON hoặc import Unit CSV để bắt đầu';
+  el.textContent = parts.length ? parts.join('  |  ') : 'Load Unit Config JSON hoặc import Struct Data Unit Station để bắt đầu';
   el.style.color = effectiveConfig ? 'var(--cyan)' : 'var(--text3)';
 
   // Cập nhật summary trên header của collapsible bar
@@ -572,7 +580,7 @@ function cgUCUpdateStatus() {
       const extras = [UC_CYLINDER_TYPES ? 'Cyl' : null,
                       Object.keys(DEVICE_LIBRARY || {}).filter(k => !k.startsWith('_')).length ? 'DevLib' : null,
                       UC_RUNTIME_DEVICE_META ? 'Meta' : null].filter(Boolean);
-      summary.textContent = '✓ ' + label + (UC_UNIT_CONFIG ? '' : ' (CSV)') + (extras.length ? '  +' + extras.join(', ') : '');
+      summary.textContent = '✓ ' + label + (UC_UNIT_CONFIG ? '' : ' (Struct)') + (extras.length ? '  +' + extras.join(', ') : '');
       summary.style.color = 'var(--cyan)';
     } else {
       summary.textContent = 'Chưa load file';
@@ -590,7 +598,7 @@ function cgDownloadCode() {
     const selectedUnitId = cgUCGetSelectedUnitId();
     const effectiveConfig = cgUCGetEffectiveConfig(selectedUnitId);
     if (!effectiveConfig) {
-      toast('⚠ Load Unit Config JSON hoặc import Unit CSV trước');
+      toast('⚠ Load Unit Config JSON hoặc import Struct Data Unit Station trước');
       return;
     }
     if (!cgUCEnsureTemplateHealth('download code')) return;

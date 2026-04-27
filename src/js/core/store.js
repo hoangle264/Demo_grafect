@@ -106,7 +106,7 @@ function syncStructDataFromProjectData() {
     changed = true;
   }
 
-  if (Object.keys(unitConfigs).length) {
+  if (Object.keys(unitConfigs).length || excelVars.some(function(v) { return v && v.format === 'Unit Station'; })) {
     changed = ensureStructDataType('Unit Station', PROJECT_UNIT_STRUCT_SIGNALS, 'cat-other') || changed;
   }
 

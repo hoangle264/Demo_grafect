@@ -469,33 +469,6 @@ function eiImportFromCSVText(csvText, csvType, options) {
       else project.excelVars.push(v);
     });
 
-    // Nếu struct là 'Unit Station', tự động sync sang project.unitConfig
-    if (selectedStructType === 'Unit Station') {
-      if (!project.unitConfig) project.unitConfig = {};
-      vars.forEach(function(v) {
-        const sa = v.signalAddresses || {};
-        project.unitConfig[v.label] = {
-          label:          v.label,
-          unitIndex:      Object.keys(project.unitConfig).length,
-          originBaseAddr: sa.originBaseAddr || '',
-          autoBaseAddr:   sa.autoBaseAddr   || '',
-          flags: {
-            flagOrigin: sa.flagOrigin || '',
-            flagAuto:   sa.flagAuto   || '',
-            flagManual: sa.flagManual || '',
-            flagError:  sa.flagError  || ''
-          },
-          io: {
-            btnStart:  sa.btnStart  || '',
-            hmiStop:   sa.hmiStop   || '',
-            btnReset:  sa.btnReset  || '',
-            eStop:     sa.eStop     || '',
-            outHomed:  sa.outHomed  || ''
-          }
-        };
-      });
-    }
-
     if (typeof syncStructDataFromProjectData === 'function') {
       syncStructDataFromProjectData();
     }
@@ -517,7 +490,7 @@ function showExcelImportModal() {
   el.className = 'modal-bg show';
 
   const cylinderCount = (project.excelVars || []).filter(function(v) { return v.format === 'Cylinder'; }).length;
-  const unitCount     = Object.keys(project.unitConfig || {}).length;
+  const unitCount     = (project.excelVars || []).filter(function(v) { return v.format === 'Unit Station'; }).length;
   const structTypes = (project.devices || []).map(function(d) { return d.name; });
   const structOptions = structTypes.length
     ? structTypes.map(function(name) { return '<option value="' + name + '">' + name + '</option>'; }).join('')

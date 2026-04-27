@@ -348,11 +348,14 @@ function tmIsRegistryEntryRequired(entry, tplCtx) {
 }
 
 function tmBuildUnitConfigTemplateContext(selectedUnitId) {
-  if (!UC_UNIT_CONFIG) return null;
   if (typeof cgUCBuildContext !== 'function' || typeof cgUCBuildTemplateContext !== 'function') {
     return null;
   }
-  const ctx = cgUCBuildContext(UC_UNIT_CONFIG, selectedUnitId);
+  const unitConfig = typeof cgUCGetEffectiveConfig === 'function'
+    ? cgUCGetEffectiveConfig(selectedUnitId)
+    : UC_UNIT_CONFIG;
+  if (!unitConfig) return null;
+  const ctx = cgUCBuildContext(unitConfig, selectedUnitId);
   return cgUCBuildTemplateContext(ctx);
 }
 
@@ -418,7 +421,10 @@ function tmCreateHealthEntry(entry, tplCtx) {
 function tmGetUnitConfigTemplateHealth(selectedUnitId) {
   const contextError = [];
   let tplCtx = null;
-  if (UC_UNIT_CONFIG) {
+  const effectiveConfig = typeof cgUCGetEffectiveConfig === 'function'
+    ? cgUCGetEffectiveConfig(selectedUnitId)
+    : UC_UNIT_CONFIG;
+  if (effectiveConfig) {
     try {
       tplCtx = tmBuildUnitConfigTemplateContext(selectedUnitId);
     } catch (e) {

@@ -182,22 +182,24 @@ Không được giả định load order kiểu `constants -> utils -> store`. H
 
 2. `project.excelVars[]`
    - dữ liệu thiết bị/struct import ở cấp project
-   - thường dùng cho `Cylinder` hoặc các struct tùy chỉnh
+   - là nguồn chính cho `Cylinder`, các struct tùy chỉnh, và `Unit Station` import qua Struct Data
    - được hiển thị trong `GLOBAL VARIABLES`
 
 3. `project.unitConfig`
-   - dữ liệu Unit Station theo key unit label
-   - dùng trực tiếp cho `Unit Config` codegen
-   - cũng được hiển thị trong `GLOBAL VARIABLES`
+   - dữ liệu Unit Station kiểu legacy theo key unit label
+   - vẫn có thể tồn tại trong project cũ hoặc khi import trực tiếp kiểu `Unit Station`
+   - không còn là nguồn sự thật cho `Unit Station` import qua Struct Data
+   - nếu có `project.excelVars` format `Unit Station`, codegen và Global Variables phải ưu tiên `excelVars`
 
 ### 5.3 Quy tắc merged view
 
 - `getLocalVars()` chỉ trả về `state.vars`
 - `getVars()` trả về `local vars + project.excelVars`
 - `getVars()` không merge `project.unitConfig`
-- `project.unitConfig` được dùng riêng ở nhánh Global Vars và Unit Config codegen
+- `Unit Station` Struct Data trong `project.excelVars` là nguồn ưu tiên cho Global Variables và Unit Config codegen
+- `project.unitConfig` chỉ là fallback/legacy, không được dùng để che hoặc ghi đè `excelVars` Unit Station
 
-Điểm này rất quan trọng: không được nhầm `unitConfig` là một phần của `getVars()`.
+Điểm này rất quan trọng: không được nhầm `unitConfig` là một phần của `getVars()`, và không được mirror Struct Data `Unit Station` sang `unitConfig` nếu mục tiêu là codegen theo struct do user định nghĩa.
 
 ## 6. UI hiện tại
 
@@ -235,29 +237,33 @@ Nó có:
 
 ### 7.1 Nguồn dữ liệu hiển thị
 
-`renderGlobalVarTable()` dùng `gvtGetEntries()` để trộn:
+`renderGlobalVarTable()` dùng `gvtGetEntries()` để hiển thị:
 
-- `project.excelVars`
-- `project.unitConfig`
+- `project.excelVars` là nguồn chính
+- `project.unitConfig` chỉ còn là fallback legacy khi chưa có Unit Station trong `excelVars`
+
+Với `Unit Station` import qua Struct Data, Global Variables phải hiện entry từ `project.excelVars` để địa chỉ signal được sửa trực tiếp trên `signalAddresses`.
 
 ### 7.2 Rule chống trùng Unit Station
 
-Hiện đã có rule chống hiển thị trùng:
+Luồng mới không mirror `Struct Data = Unit Station` sang `project.unitConfig` nữa.
 
-- nếu một entry trong `project.excelVars` có `format === 'Unit Station'`
-- và `project.unitConfig[v.label]` đã tồn tại
-- thì Global Vars chỉ hiện bản `unitConfig`
+- nếu `project.excelVars` có entry `format === 'Unit Station'`, Global Vars hiển thị entry `excel` đó
+- `project.unitConfig` không được tạo thêm từ Struct Data import
+- nếu project cũ còn `project.unitConfig`, chỉ dùng như fallback legacy khi không có Unit Station trong `excelVars`
 
-Mục tiêu là tránh một lần import `Unit Station` qua Struct Data tạo ra 2 dòng cùng tên.
+Mục tiêu là một lần import Unit Station qua Struct Data chỉ tạo một dòng Global Variables và xóa một lần là hết.
 
 ### 7.3 Edit signal address trực tiếp
 
 Global Vars cho phép sửa trực tiếp địa chỉ signal:
 
 - với entry `excel`: ghi vào `project.excelVars[idx].signalAddresses[sig.id]`
-- với entry `unit`: ghi vào nested path trong `project.unitConfig[key]`
+- với entry `unit`: ghi vào nested path trong `project.unitConfig[key]` (legacy fallback)
 
 Sau khi sửa sẽ `saveProject()`.
+
+Với Unit Station Struct Data, đường edit đúng là entry `excel`; không sửa nested `project.unitConfig`.
 
 ## 8. Struct Data và tự đồng bộ
 
@@ -266,7 +272,7 @@ Sau khi sửa sẽ `saveProject()`.
 Chức năng:
 
 - nếu có `excelVars` format `Cylinder` mà chưa có device type `Cylinder`, tự đảm bảo type này tồn tại
-- nếu có `project.unitConfig`, tự đảm bảo tồn tại Struct Data type `Unit Station`
+- nếu có `project.unitConfig` legacy hoặc `excelVars` format `Unit Station`, tự đảm bảo tồn tại Struct Data type `Unit Station`
 - nếu có `excelVars` với format tùy chỉnh khác, có thể auto-create Struct Data type tương ứng từ `signalAddresses`
 
 Điều này có nghĩa:
@@ -327,10 +333,18 @@ Các cột hiện được hỗ trợ bao gồm:
 
 Nếu import qua `Struct Data` và chọn đúng struct type `Unit Station` thì hệ thống sẽ:
 
-1. lưu raw row vào `project.excelVars`
-2. đồng thời sync sang `project.unitConfig`
+1. lưu row vào `project.excelVars`
+2. không sync/mirror sang `project.unitConfig`
+3. codegen đọc lại `project.excelVars` để dựng `ctx.unit`
 
-Đây là hành vi cố ý để codegen Unit Config vẫn chạy được.
+Tên field trong HBS phải dùng đúng `name` của signal trong Struct Data:
+
+- signal `EStop` → `{{unit.EStop}}`
+- signal `AutoFlag` → `{{unit.AutoFlag}}`
+- signal `ManualFlag` → `{{unit.ManualFlag}}`
+- signal `TEST` → `{{unit.TEST}}`
+
+Không tự tạo alias kiểu `unit.eStop`, `unit.flagAuto`, `unit.flagManual`, hoặc `unit.flagTEST`. Nếu template dùng tên cũ thì output sẽ rỗng.
 
 ## 10. Code generation hiện tại
 
@@ -359,15 +373,12 @@ Khi target là `unit-config`:
 Thứ tự fallback hiện tại:
 
 1. `UC_UNIT_CONFIG` nếu user load file JSON
-2. synthetic config build từ `project.unitConfig`
+2. synthetic config build từ `project.excelVars` có `format === 'Unit Station'`
+3. fallback legacy từ `project.unitConfig` nếu chưa có Unit Station trong `excelVars`
 
-Trong `unit-config.js`, `ucBuildSyntheticConfig(selectedUnitId)` còn có fallback sâu hơn:
+Trong `unit-config.js`, `ucBuildSyntheticConfig(selectedUnitId)` dùng `project.excelVars` để tạo config tối thiểu cho codegen, nhưng `ctx.unit` được dựng từ signal `name` trong Struct Data `Unit Station`, không từ `unit.flags`/`unit.io`.
 
-- lookup từ `project.units`
-- fallback theo key trực tiếp trong `project.unitConfig`
-- fallback cuối từ `project.excelVars` có `format === 'Unit Station'`
-
-Điều này giúp generate vẫn chạy dù:
+Điều này giúp generate chạy dù:
 
 - chưa load file `infeed-unit.json`
 - project chưa có `project.units`
@@ -378,15 +389,98 @@ Trong `unit-config.js`, `ucBuildSyntheticConfig(selectedUnitId)` còn có fallba
 `cgUCBuildUnitSelector()` trong `modal.js` hiện:
 
 - ưu tiên render unit từ `project.units`
-- nếu `project.units` rỗng thì fallback sang key của `project.unitConfig`
+- nếu `project.units` rỗng thì fallback sang label của `project.excelVars` có `format === 'Unit Station'`
+- fallback cuối mới là key của `project.unitConfig` legacy
 
-### 10.5 Template health
+### 10.5 Unit template context từ Struct Data
+
+Khi có `project.excelVars` format `Unit Station`, `cgUCBuildContext()` dựng `ctx.unit` theo signal `name` của Struct Data đã chọn.
+
+Quy tắc:
+
+- chỉ expose field được import trong Struct Data
+- giữ nguyên chữ hoa/thường của signal name
+- không tự sinh/default `unit.flags` hoặc `unit.io`
+- không tạo alias camelCase hoặc `flag*`
+
+Ví dụ nếu Struct Data `Unit Station` có signal:
+
+- `EStop`
+- `AutoFlag`
+- `ManualFlag`
+- `TEST`
+
+thì template dùng:
+
+```hbs
+{{unit.EStop}}
+{{unit.AutoFlag}}
+{{unit.ManualFlag}}
+{{unit.TEST}}
+```
+
+Không dùng:
+
+```hbs
+{{unit.eStop}}
+{{unit.flagAuto}}
+{{unit.flagManual}}
+{{unit.flagTEST}}
+```
+
+Nếu template dùng tên không tồn tại trong Struct Data thì output sẽ rỗng.
+
+### 10.6 Lỗi thường gặp khi generate Unit Config
+
+#### Output template bị rỗng sau lệnh IL
+
+Ví dụ:
+
+```il
+LD CR2002            ; Always ON
+OUT             ; TEST mode
+```
+
+Nguyên nhân thường là template đang gọi sai field trong `ctx.unit`.
+
+Với Struct Data `Unit Station`, codegen không tự đổi tên signal. Nếu Struct Data có signal `TEST`, template phải gọi:
+
+```hbs
+OUT {{pad unit.TEST}}; TEST mode
+```
+
+Không gọi:
+
+```hbs
+OUT {{pad unit.flagTEST}}; TEST mode
+```
+
+Tương tự:
+
+- `EStop` → `{{unit.EStop}}`
+- `AutoFlag` → `{{unit.AutoFlag}}`
+- `ManualFlag` → `{{unit.ManualFlag}}`
+
+#### Lỗi `Thiếu cấu hình Unit IO/Flags`
+
+Thông báo này thuộc guard legacy trong `cgGenerateFromUnitConfig()`.
+
+Luồng Struct Data mới không dùng `unit.flags` / `unit.io`, nên guard này chỉ được áp dụng khi chưa có `project.excelVars` format `Unit Station`. Nếu lỗi này xuất hiện, cần kiểm tra:
+
+1. CSV đã import bằng mode `Struct Data` chưa
+2. Struct type đã chọn đúng `Unit Station` chưa
+3. `project.excelVars` có entry `format === 'Unit Station'` chưa
+4. Template đang dùng đúng signal name gốc chưa
+
+Nếu đã import Unit Station qua Struct Data mà vẫn gặp lỗi này, kiểm tra `cgUCGetEffectiveConfig()` và `ucGetUnitStationVars()` trong `unit-config.js` / `modal.js`.
+
+### 10.7 Template health
 
 Preview/copy/download ở Unit Config mode bị chặn nếu template library invalid.
 
 Phải kiểm tra qua `template-manager.js` và các `.hbs` nếu preview bị block.
 
-### 10.6 Runtime Plan target
+### 10.8 Runtime Plan target
 
 `runtime-plan` dùng để debug pipeline runtime, không phải output IL production.
 

@@ -1,2 +1,2 @@
-UnitName,OriginFlag,AutoFlag,ManualFlag,OriginBase,AutoBase,ErrorFlag,Start,Stop,Reset,EStop,HomeDone
-Infeed,@MR000,@MR001,@MR002,@MR100,@MR200,@MR004,MR5001,MR5011,MR5003,MR5000,MR5020
+label,flagOrigin,flagAuto,flagManual,flagHomed,flagManPEnd,flagError,flagErrStop,flagResetPulse,TEST,errorDMAddr,autoTriggerAddr,ErrorFlag,outHomed,flagsResetEnd,hmiManBtnBase,hmiManBtnEnd,btnStart,hmiStart,hmiManual,hmiStop,btnReset,eStop
+Infeed,@MR001,@MR002,@MR003,@MR004,@MR005,@MR006,@MR007,@MR008,MR6000,DM1000,@MR009,@MR010,MR6010,@MR011,MR7000,MR7100,MR5001,MR5011,MR5501,MR5500,MR5003,MR5000
