@@ -1,27 +1,27 @@
 {{!--
-  step-body-1.hbs — Format step có comment header + feedback từ thiết bị thực tế.
+  step-body-1.hbs — Format step có comment header + complete signal từ thiết bị thực tế.
 
   Để dùng: đổi tên file này thành step-body.hbs (thay thế file cũ).
 
   Context variables:
-    stepIndex   : số thứ tự step (0-based) → hiển thị 01, 02, ...
-    addr        : flag ACTIVE  (VD: @MR100)
-    cmpAddr     : flag COMPLETE (VD: @MR101)
-    prevCmpAddr : flag COMPLETE của step trước (VD: @MR099)
-    sensor      : địa chỉ cảm biến phản hồi từ thiết bị (VD: MR1000)
-    sensorLabel : nhãn sensor (VD: CY1.LSH)
-    actionLabel : nhãn hành động (VD: CY1 Up)
-    extraCondition : điều kiện thêm từ inTrans (nếu có)
+    stepIndex     : số thứ tự step (0-based) → hiển thị 01, 02, ...
+    addr          : flag ACTIVE  (VD: @MR100)
+    cmpAddr       : flag COMPLETE (VD: @MR101)
+    prevCmpAddr   : flag COMPLETE của step trước (VD: @MR099)
+    complete      : địa chỉ tín hiệu hoàn tất từ thiết bị (VD: MR1000)
+    completeLabel : nhãn complete signal (VD: CY1.LSH)
+    actionLabel   : nhãn hành động (VD: CY1 CoilA)
+    extraCondition: điều kiện thêm từ inTrans (nếu có)
 
   Output ví dụ:
-    ; --- Step 01: CY1 Up ---
-    LD   @MR099      ; CY1 Up Cmp (step trước)
+    ; --- Step 01: CY1 CoilA ---
+    LD   @MR099      ; CY1 CoilA Cmp (step trước)
     AND  Start_Button
-    SET  @MR100      ; CY1 Up
+    SET  @MR100      ; CY1 CoilA
 
-    LD   @MR100      ; CY1 Up
-    AND  MR1000      ; CY1.LSH  ← phản hồi thực tế từ thiết bị
-    SET  @MR101      ; CY1 Up Cmp
+    LD   @MR100      ; CY1 CoilA
+    AND  MR1000      ; CY1.LSH
+    OUT  @MR101      ; CY1 CoilA Cmp
 --}}
 ; --- Step {{padStart2 stepIndex}}: {{{actionLabel}}} ---
 {{#if isFirst}}
@@ -35,9 +35,5 @@ LD   {{pad prevCmpAddr}}; {{{prevActionLabel}}} Cmp
 SET  {{pad addr}}; {{{actionLabel}}}
 
 LD   {{pad addr}}; {{{actionLabel}}}
-{{#if sensor}}
-AND  {{pad sensor}}; {{{sensorLabel}}}
-{{else}}
-; (no feedback sensor)
-{{/if}}
-SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+AND  {{pad complete}}; {{{completeLabel}}}
+OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp

@@ -430,7 +430,62 @@ Không dùng:
 
 Nếu template dùng tên không tồn tại trong Struct Data thì output sẽ rỗng.
 
-### 10.6 Lỗi thường gặp khi generate Unit Config
+### 10.6 Device Library JSON và command metadata
+
+Unit Config codegen có thể dùng file Device Library JSON để mô tả command của từng loại thiết bị. File mẫu hiện có:
+
+- `config/Devices.json`
+
+Ví dụ cấu trúc cho Cylinder:
+
+```json
+{
+  "deviceId": "cylinder",
+  "name": "Cylinder",
+  "version": "1.0.0",
+  "commands": {
+    "extend": {
+      "actionLabel": "Cylinder Extend",
+      "driveSignal": "CoilA",
+      "complete": {
+        "sensor": "LSH",
+        "sensorLabel": "Cylinder High Limit"
+      }
+    },
+    "retract": {
+      "actionLabel": "Cylinder Retract",
+      "driveSignal": "CoilB",
+      "complete": {
+        "sensor": "LSL",
+        "sensorLabel": "Cylinder Low Limit"
+      }
+    }
+  }
+}
+```
+
+Quy tắc quan trọng:
+
+- `driveSignal` và `complete.sensor` phải là đúng `name` của signal trong Struct Data tương ứng.
+- Với Cylinder Struct Data chuẩn hiện tại:
+  - `driveSignal: "CoilA"` hoàn tất bằng `complete.sensor: "LSH"`
+  - `driveSignal: "CoilB"` hoàn tất bằng `complete.sensor: "LSL"`
+- User có thể sửa các giá trị này để khớp Struct Data riêng, ví dụ thiết bị khác có signal command/complete khác.
+- `commands` là object map theo command name (`extend`, `retract`, ...). Khi cần mở rộng output template theo số lượng command, có thể enrich context và dùng `{{#each commands}}` trong `.hbs`.
+
+`step-body.hbs` không tự suy luận sensor từ tên cũ `_SNS` nữa. Logic completion hiện tại là:
+
+```hbs
+LD   {{pad addr}}; {{{actionLabel}}}
+AND  {{pad complete}}; {{{completeLabel}}}
+OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+```
+
+`complete` được resolve từ `commands[*].complete.sensor` theo `driveSignal` của action. Ví dụ action `CY1.CoilA` dùng command có `driveSignal = "CoilA"`, sau đó lấy `complete.sensor = "LSH"` để tra địa chỉ `CY1.LSH` trong imported Struct Data.
+
+DisSns (`DisSnsH` / `DisSnsL`) không còn nằm trong logic hoàn tất step của `auto/origin`. Nếu cần bypass sensor, chỉ dùng ở logic khác như error timer output, không đưa vào `step-body.hbs`.
+
+### 10.7 Lỗi thường gặp khi generate Unit Config
 
 #### Output template bị rỗng sau lệnh IL
 
@@ -474,13 +529,13 @@ Luồng Struct Data mới không dùng `unit.flags` / `unit.io`, nên guard này
 
 Nếu đã import Unit Station qua Struct Data mà vẫn gặp lỗi này, kiểm tra `cgUCGetEffectiveConfig()` và `ucGetUnitStationVars()` trong `unit-config.js` / `modal.js`.
 
-### 10.7 Template health
+### 10.8 Template health
 
 Preview/copy/download ở Unit Config mode bị chặn nếu template library invalid.
 
 Phải kiểm tra qua `template-manager.js` và các `.hbs` nếu preview bị block.
 
-### 10.8 Runtime Plan target
+### 10.9 Runtime Plan target
 
 `runtime-plan` dùng để debug pipeline runtime, không phải output IL production.
 

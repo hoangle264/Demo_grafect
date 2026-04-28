@@ -18,7 +18,7 @@ OUT  {{pad unit.flagManual}}; Manual
 LD   {{pad unit.flagManual}}; Manual
 {{#if isSingleCylinder}}
 {{!-- single cylinder: direct ANP + ALT --}}
-ANP  {{pad cylinders.[0].hmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
+ANP  {{pad cylinders.[0].HmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
 ALT  {{pad cylinders.[0].sysManFlag}}; sys_man_{{{cylinders.[0].label}}}
 {{else}}
 {{!-- multiple cylinders: MPS/MRD/MPP stack via altStackInst --}}
@@ -26,7 +26,7 @@ ALT  {{pad cylinders.[0].sysManFlag}}; sys_man_{{{cylinders.[0].label}}}
 {{#if altStackInst}}
 {{{altStackInst}}}
 {{/if}}
-ANP  {{pad hmiManBtn}}; Hmi_man _{{{label}}}
+ANP  {{pad HmiManBtn}}; Hmi_man _{{{label}}}
 ALT  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/each}}
 {{/if}}
@@ -38,13 +38,13 @@ LDB  {{pad unit.flagManual}}; Manual
 {{!-- multiple cylinders: MPS stack --}}
 MPS
 {{#each cysWithOut}}
-{{#if outDirA}}
-ANP  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{{stackBeforeDirB}}}
-{{#if outDirB}}
-ANP  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{#if CoilB}}
+ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{#if stackAfterDirB}}
@@ -54,12 +54,12 @@ RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{else}}
 {{!-- single cylinder with output --}}
 {{#with cysWithOut.[0]}}
-{{#if outDirA}}
-ANP  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
-{{#if outDirB}}
-ANP  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{#if CoilB}}
+ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{/with}}

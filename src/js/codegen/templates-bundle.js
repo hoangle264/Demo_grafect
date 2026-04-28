@@ -26,18 +26,18 @@ ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
 {{#if unit.errorDMAddr}}
 LD   CR2002           ; Always ON
 {{#each cylinders}}
-{{#if errFlagDirA}}
-MOV  {{pad errFlagDirA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
+{{#if ErrorA}}
+MOV  {{pad ErrorA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
 {{/if}}
 {{/each}}
 LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
 {{else}}
 {{#each cylinders}}
-{{#if errFlagDirA}}
-{{#if @first}}LD   {{else}}OR   {{/if}}{{pad errFlagDirA}}; Error_{{{label}}}_{{{dirAName}}}
+{{#if ErrorA}}
+{{#if @first}}LD   {{else}}OR   {{/if}}{{pad ErrorA}}; Error_{{{label}}}_{{{dirAName}}}
 {{/if}}
-{{#if errFlagDirB}}
-OR   {{pad errFlagDirB}}; Error_{{{label}}}_{{{dirBName}}}
+{{#if ErrorB}}
+OR   {{pad ErrorB}}; Error_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/each}}
 {{/if}}
@@ -70,14 +70,14 @@ OUT  {{pad unit.flagManual}}; Manual
 {{#if hasCylinders}}
 LD   {{pad unit.flagManual}}; Manual
 {{#if isSingleCylinder}}
-ANP  {{pad cylinders.[0].hmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
+ANP  {{pad cylinders.[0].HmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
 ALT  {{pad cylinders.[0].sysManFlag}}; sys_man_{{{cylinders.[0].label}}}
 {{else}}
 {{#each cylinders}}
 {{#if altStackInst}}
 {{{altStackInst}}}
 {{/if}}
-ANP  {{pad hmiManBtn}}; Hmi_man _{{{label}}}
+ANP  {{pad HmiManBtn}}; Hmi_man _{{{label}}}
 ALT  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/each}}
 {{/if}}
@@ -87,13 +87,13 @@ LDB  {{pad unit.flagManual}}; Manual
 {{#if cysWithOutMultiple}}
 MPS
 {{#each cysWithOut}}
-{{#if outDirA}}
-ANP  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{{stackBeforeDirB}}}
-{{#if outDirB}}
-ANP  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{#if CoilB}}
+ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{#if stackAfterDirB}}
@@ -102,12 +102,12 @@ RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/each}}
 {{else}}
 {{#with cysWithOut.[0]}}
-{{#if outDirA}}
-ANP  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
-{{#if outDirB}}
-ANP  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{#if CoilB}}
+ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{/with}}
@@ -229,13 +229,13 @@ ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
 LD   {{pad ../unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirA}}
-ANB  {{pad lockDirA}}; {{{../unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+{{#if LockA}}
+ANB  {{pad LockA}}; {{{../unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
 {{/if}}
-SET  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if outDirB}}
+SET  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilB}}
 CON
-RES  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+RES  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{#if hasDirBOutput}}
@@ -256,28 +256,28 @@ ANL
 LD   {{pad ../unit.flagManual}}; Manual
 ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirB}}
-ANB  {{pad lockDirB}}; {{{../unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+{{#if LockB}}
+ANB  {{pad LockB}}; {{{../unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
 {{/if}}
-{{#if outDirA}}
-RES  {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+RES  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 CON
 {{/if}}
-SET  {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+SET  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{#if errTimerDirA}}
-LD   {{pad outDirA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad sensorDirA}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+LD   {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad LSH}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 ANB  {{pad ../unit.flagManual}}; Manual
 ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
-LD   {{pad outDirB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad sensorDirB}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+LD   {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad LSL}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 ANB  {{pad ../unit.flagManual}}; Manual
 ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{/each}}
@@ -306,17 +306,9 @@ const UC_PARTIAL_BUNDLE = {
 
   // ── src/templates/step-body.hbs ──────────────────────────────────────────
   //  *** SỬA ĐÂY để thay đổi format completion của mỗi step ***
-  //  Mặc định: LD addr → AND sensor (OR disSns bypass) → OUT cmpAddr
+  //  Mặc định: LD addr → AND complete → OUT cmpAddr
   step_body: `LD   {{pad addr}}; {{{actionLabel}}}
-{{#if sensor}}
-{{#if disSns}}
-LD   {{pad sensor}}; {{{sensorLabel}}}
-OR   {{pad disSns}}; {{{actionLabel}}} DisSns bypass
-ANL
-{{else}}
-AND  {{pad sensor}}; {{{sensorLabel}}}
-{{/if}}
-{{/if}}
+AND  {{pad complete}}; {{{completeLabel}}}
 OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
 
@@ -330,13 +322,13 @@ ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
 LD   {{pad unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirA}}
-ANB  {{pad lockDirA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+{{#if LockA}}
+ANB  {{pad LockA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
 {{/if}}
-SET  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if outDirB}}
+SET  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilB}}
 CON
-RES  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+RES  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{#if hasDirBOutput}}
@@ -357,34 +349,34 @@ ANL
 LD   {{pad unit.flagManual}}; Manual
 ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirB}}
-ANB  {{pad lockDirB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+{{#if LockB}}
+ANB  {{pad LockB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
 {{/if}}
-{{#if outDirA}}
-RES  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+RES  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 CON
 {{/if}}
-SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{#if errTimerDirA}}
-LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-{{#if disSnsA}}
-ANB  {{pad disSnsA}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+LD   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+{{#if DisSnsH}}
+ANB  {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
 {{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
-LD   {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad sensorDirB}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-{{#if disSnsB}}
-ANB  {{pad disSnsB}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+LD   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+{{#if DisSnsL}}
+ANB  {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
 {{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
 {{/if}}
 {{/if}}
 `,

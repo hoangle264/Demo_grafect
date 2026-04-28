@@ -11,13 +11,13 @@ ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
 LD   {{pad unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirA}}
-ANB  {{pad lockDirA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+{{#if LockA}}
+ANB  {{pad LockA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
 {{/if}}
-SET  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if outDirB}}
+SET  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilB}}
 CON
-RES  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+RES  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{!-- ─── DirB output: Auto (step active & not-cmp, ORL for multi-step) ──── --}}
@@ -39,34 +39,34 @@ ANL
 LD   {{pad unit.flagManual}}; Manual
 ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
-{{#if lockDirB}}
-ANB  {{pad lockDirB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+{{#if LockB}}
+ANB  {{pad LockB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
 {{/if}}
-{{#if outDirA}}
-RES  {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilA}}
+RES  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 CON
 {{/if}}
-SET  {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{!-- ─── Error timers: ONDL if output ON but feedback sensor not reached ─── --}}
 {{#if errTimerDirA}}
-LD   {{pad outDirA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad sensorDirA}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-{{#if disSnsA}}
-ANB  {{pad disSnsA}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+LD   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+{{#if DisSnsH}}
+ANB  {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
 {{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
-LD   {{pad outDirB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad sensorDirB}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-{{#if disSnsB}}
-ANB  {{pad disSnsB}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+LD   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+{{#if DisSnsL}}
+ANB  {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
 {{/if}}
 ANB  {{pad unit.flagManual}}; Manual
 ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{errFlagDirB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
+ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
 {{/if}}
 {{/if}}

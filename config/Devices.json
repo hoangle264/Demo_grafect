@@ -1,0 +1,23 @@
+{
+  "deviceId": "cylinder",
+  "name": "Cylinder",
+  "version": "1.0.0",
+  "commands": {
+    "extend": {
+      "actionLabel": "Cylinder Extend",
+      "driveSignal": "CoilA",
+      "complete": {
+        "sensor": "LSH",
+        "sensorLabel": "Cylinder High Limit"
+      }
+    },
+    "retract": {
+      "actionLabel": "Cylinder Retract",
+      "driveSignal": "CoilB",
+      "complete": {
+        "sensor": "LSL",
+        "sensorLabel": "Cylinder Low Limit"
+      }
+    }
+  }
+}
