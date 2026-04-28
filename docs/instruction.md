@@ -485,7 +485,70 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 
 DisSns (`DisSnsH` / `DisSnsL`) không còn nằm trong logic hoàn tất step của `auto/origin`. Nếu cần bypass sensor, chỉ dùng ở logic khác như error timer output, không đưa vào `step-body.hbs`.
 
-### 10.7 Lỗi thường gặp khi generate Unit Config
+### 10.7 Generic device output rendering
+
+Unit Config output hiện dùng luồng modular qua `main-output.hbs` thay vì hard-code từng loại device trong template.
+
+`main-output.hbs` phải dispatch bằng helper:
+
+```hbs
+;<h1>OUTPUT SECTION (AUTO/MANUAL)
+{{#each devices}}
+{{{renderDeviceOutput this ../unit}}}
+{{/each}}
+```
+
+Không thêm lại các nhánh hard-code kiểu:
+
+```hbs
+{{#if (eq kind "cylinder")}}
+{{> device_cylinder}}
+{{else if (eq kind "servo")}}
+{{> device_servo}}
+{{/if}}
+```
+
+Quy tắc resolve output partial:
+
+1. Mỗi device trong `tplCtx.devices` có metadata chuẩn hóa:
+   - `kind`
+   - `templateKey`
+   - `partialName`
+   - `outputPartial`
+   - `usesGenericPartial`
+   - `renderWarning`
+   - `unit`
+2. `templateKey` mặc định lấy từ `device.templateKey`, sau đó fallback về `kind`.
+3. Partial được resolve theo tên `device_<templateKey>`.
+4. Core partial mặc định:
+   - `device_cylinder`
+   - `device_servo`
+   - `device_motor`
+   - `device_generic`
+5. Nếu không tìm thấy partial riêng cho kind mới, codegen dùng `device_generic` và ghi warning.
+6. `devicesByKind` được thêm vào template context để các template có thể group theo loại device.
+7. `cylinders` và legacy `output.hbs` vẫn được giữ để tương thích, nhưng `output.hbs` chỉ phục vụ luồng cylinder cũ.
+
+Với device mới, có hai cách hỗ trợ output:
+
+- Cách nhanh: device có `outputAddr` thì `device_generic` sẽ emit output tối thiểu:
+
+```il
+LD   <unit.flagAuto>; Auto
+ANB  <unit.flagError>; Error
+OUT  <outputAddr>; <label>_Output
+```
+
+- Cách đầy đủ: tạo/upload custom partial theo quy ước `device_<kind>.hbs`, ví dụ:
+  - file upload: `device_valve.hbs`
+  - device data: `kind: "valve"` hoặc `templateKey: "valve"`
+  - partial runtime: `device_valve`
+
+Trong device partial, dùng `unit.` trực tiếp vì `renderDeviceOutput` truyền `unit` vào context của partial. Không dùng `../unit.` trong `src/templates/devices/*.hbs`.
+
+Nếu sửa template mặc định trong `src/templates/`, phải sync lại `src/js/codegen/templates-bundle.js` để offline/file:// mode chạy đúng.
+
+### 10.8 Lỗi thường gặp khi generate Unit Config
 
 #### Output template bị rỗng sau lệnh IL
 
@@ -529,13 +592,13 @@ Luồng Struct Data mới không dùng `unit.flags` / `unit.io`, nên guard này
 
 Nếu đã import Unit Station qua Struct Data mà vẫn gặp lỗi này, kiểm tra `cgUCGetEffectiveConfig()` và `ucGetUnitStationVars()` trong `unit-config.js` / `modal.js`.
 
-### 10.8 Template health
+### 10.9 Template health
 
 Preview/copy/download ở Unit Config mode bị chặn nếu template library invalid.
 
 Phải kiểm tra qua `template-manager.js` và các `.hbs` nếu preview bị block.
 
-### 10.9 Runtime Plan target
+### 10.10 Runtime Plan target
 
 `runtime-plan` dùng để debug pipeline runtime, không phải output IL production.
 
@@ -566,6 +629,8 @@ Các tên template Unit Config đang được hỗ trợ:
 - `cylinder.hbs`
 - `servo.hbs`
 - `motor.hbs`
+- `generic.hbs`
+- custom device partial theo format `device_<kind>.hbs` (ví dụ `device_valve.hbs`)
 
 Legacy keys vẫn còn:
 

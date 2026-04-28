@@ -168,6 +168,21 @@ const TM_UNIT_CONFIG_TEMPLATE_REGISTRY = [
     order: 100,
     acceptAliases: ['devices/motor.hbs'],
   },
+  {
+    id: 'uc.deviceGeneric',
+    scope: 'unit-config',
+    group: 'device-partials',
+    category: 'partial',
+    uploadName: 'generic.hbs',
+    storageKey: 'custom_tpl_uc_device_generic',
+    cacheKey: null,
+    partialName: 'device_generic',
+    bundledSourceType: 'partial',
+    bundledSourceKey: 'device_generic',
+    description: 'Fallback device partial for unknown device kinds',
+    order: 110,
+    acceptAliases: ['devices/generic.hbs', 'device_generic.hbs'],
+  },
 ];
 
 const TM_LEGACY_ALLOWED_FILES = {
@@ -192,10 +207,59 @@ TM_UNIT_CONFIG_TEMPLATE_REGISTRY.forEach(function(entry) {
   });
 });
 
+function tmReadDynamicDevicePartial(info) {
+  return info ? localStorage.getItem(info.storageKey) : null;
+}
+
+function tmListDynamicDevicePartials() {
+  const result = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(TM_STORAGE_PREFIX + 'uc_device_')) continue;
+    const templateKey = tmNormalizeDeviceTemplateKey(key.slice((TM_STORAGE_PREFIX + 'uc_device_').length));
+    if (!templateKey || ['cylinder', 'servo', 'motor', 'generic'].includes(templateKey)) continue;
+    result.push({
+      uploadName: 'device_' + templateKey + '.hbs',
+      storageKey: key,
+      partialName: 'device_' + templateKey,
+      templateKey: templateKey,
+      description: 'Custom device partial for ' + templateKey
+    });
+  }
+  return result.sort(function(a, b) { return a.uploadName.localeCompare(b.uploadName); });
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 function tmNormalizeFilename(filename) {
   return String(filename || '').trim().replace(/^.*[\\/]/, '');
+}
+
+function tmNormalizeDeviceTemplateKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.hbs$/i, '')
+    .replace(/^device[_-]/i, '')
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function tmGetDynamicDevicePartialInfo(filename) {
+  const normalized = tmNormalizeFilename(filename);
+  if (!/\.hbs$/i.test(normalized)) return null;
+  const base = normalized.replace(/\.hbs$/i, '');
+  const rawKey = /^device[_-]/i.test(base) ? base : '';
+  if (!rawKey) return null;
+  const templateKey = tmNormalizeDeviceTemplateKey(rawKey);
+  if (!templateKey || ['cylinder', 'servo', 'motor', 'generic'].includes(templateKey)) return null;
+  return {
+    uploadName: 'device_' + templateKey + '.hbs',
+    storageKey: TM_STORAGE_PREFIX + 'uc_device_' + templateKey,
+    partialName: 'device_' + templateKey,
+    templateKey: templateKey,
+    description: 'Custom device partial for ' + templateKey
+  };
 }
 
 function tmGetRegistryEntry(filename) {
@@ -236,8 +300,23 @@ function tmListRegistryEntries() {
   });
 }
 
+function tmListTemplateEntries() {
+  return tmListRegistryEntries().concat(tmListDynamicDevicePartials().map(function(info) {
+    return Object.assign({
+      id: 'uc.dynamicDevice.' + info.templateKey,
+      scope: 'unit-config',
+      group: 'device-partials',
+      category: 'partial',
+      cacheKey: null,
+      bundledSourceType: null,
+      bundledSourceKey: null,
+      order: 1000
+    }, info);
+  }));
+}
+
 function tmGetRegistryEntryByPartialName(partialName) {
-  return tmListRegistryEntries().find(function(entry) {
+  return tmListTemplateEntries().find(function(entry) {
     return entry.partialName === partialName;
   }) || null;
 }
@@ -277,7 +356,7 @@ function tmGetBundledTemplateSource(entry) {
 }
 
 function tmGetActiveTemplateSource(entry) {
-  return tmReadRegistryTemplate(entry) || tmGetBundledTemplateSource(entry) || '';
+  return tmReadTemplateEntry(entry) || tmGetBundledTemplateSource(entry) || '';
 }
 
 function tmTemplateUsesPartial(src, partialName) {
@@ -292,7 +371,7 @@ function tmGetPartialConsumerEntries(entry) {
   const sectionIds = entry.partialName === 'step_body'
     ? ['uc.origin', 'uc.auto']
     : ['uc.mainOutput', 'uc.outputLegacy'];
-  return tmListRegistryEntries().filter(function(item) {
+  return tmListTemplateEntries().filter(function(item) {
     return sectionIds.includes(item.id);
   });
 }
@@ -328,18 +407,28 @@ function tmGetPartialUsageInfo(entry) {
   };
 }
 
+function tmDeviceNeedsPartial(partialName, tplCtx) {
+  if (!partialName || !tplCtx || !Array.isArray(tplCtx.devices)) return false;
+  return tplCtx.devices.some(function(dev) {
+    return dev && (dev.partialName === partialName || dev.outputPartial === partialName);
+  });
+}
+
+function tmHasUnknownDeviceFallback(tplCtx) {
+  return !!(tplCtx && Array.isArray(tplCtx.devices) && tplCtx.devices.some(function(dev) {
+    return dev && dev.usesGenericPartial;
+  }));
+}
+
 function tmIsRegistryEntryRequired(entry, tplCtx) {
   if (!entry) return false;
   if (entry.id === 'uc.outputLegacy') return false;
   const usageInfo = tmGetPartialUsageInfo(entry);
-  if (entry.id === 'uc.deviceCylinder') {
-    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'cylinder'; }));
+  if (entry.id === 'uc.deviceGeneric') {
+    return usageInfo.isReferenced && tmHasUnknownDeviceFallback(tplCtx);
   }
-  if (entry.id === 'uc.deviceServo') {
-    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'servo'; }));
-  }
-  if (entry.id === 'uc.deviceMotor') {
-    return usageInfo.isReferenced && !!(tplCtx && (tplCtx.devices || []).some(function(dev) { return dev.kind === 'motor'; }));
+  if (entry.group === 'device-partials') {
+    return usageInfo.isReferenced && tmDeviceNeedsPartial(entry.partialName, tplCtx);
   }
   if (entry.id === 'uc.stepBody') {
     return usageInfo.isReferenced;
@@ -377,7 +466,7 @@ function tmProbeTemplateRender(entry, tplCtx) {
 }
 
 function tmCreateHealthEntry(entry, tplCtx) {
-  const customSrc = tmReadRegistryTemplate(entry);
+  const customSrc = tmReadTemplateEntry(entry);
   const bundledSrc = tmGetBundledTemplateSource(entry);
   const issue = tmGetTemplateIssue(entry);
   const usageInfo = tmGetPartialUsageInfo(entry);
@@ -434,7 +523,7 @@ function tmGetUnitConfigTemplateHealth(selectedUnitId) {
 
   const entryMap = Object.create(null);
   const errors = [];
-  tmListRegistryEntries().forEach(function(entry) {
+  tmListTemplateEntries().forEach(function(entry) {
     entryMap[entry.id] = tmCreateHealthEntry(entry, tplCtx);
     if ((entryMap[entry.id].status === 'Missing' || entryMap[entry.id].status === 'Invalid') && entryMap[entry.id].required) {
       errors.push(entry.uploadName + ': ' + entryMap[entry.id].message);
@@ -442,7 +531,7 @@ function tmGetUnitConfigTemplateHealth(selectedUnitId) {
   });
 
   if (!contextError.length && tplCtx && typeof Handlebars !== 'undefined') {
-    tmListRegistryEntries().filter(function(entry) {
+    tmListTemplateEntries().filter(function(entry) {
       return entry.category === 'partial';
     }).forEach(function(entry) {
       const src = tmGetActiveTemplateSource(entry);
@@ -451,7 +540,7 @@ function tmGetUnitConfigTemplateHealth(selectedUnitId) {
       }
     });
 
-    tmListRegistryEntries().filter(function(entry) {
+    tmListTemplateEntries().filter(function(entry) {
       return entry.category === 'section' && tmIsRegistryEntryRequired(entry, tplCtx);
     }).forEach(function(entry) {
       const current = entryMap[entry.id];
@@ -484,7 +573,7 @@ function tmGetUnitConfigTemplateHealth(selectedUnitId) {
 
   return {
     valid: errors.length === 0,
-    entries: tmListRegistryEntries().map(function(entry) { return entryMap[entry.id]; }),
+    entries: tmListTemplateEntries().map(function(entry) { return entryMap[entry.id]; }),
     errors: Array.from(new Set(errors)),
     contextError: contextError,
     hasContext: !!tplCtx,
@@ -542,6 +631,8 @@ function tmMigrateLegacyUnitConfigTemplates() {
 function tmGetCustomTemplate(filename) {
   const entry = tmGetRegistryEntry(filename);
   if (entry) return tmReadRegistryTemplate(entry);
+  const dynamicInfo = tmGetDynamicDevicePartialInfo(filename);
+  if (dynamicInfo) return tmReadDynamicDevicePartial(dynamicInfo);
   return localStorage.getItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename));
 }
 
@@ -557,6 +648,11 @@ function tmSetCustomTemplate(filename, src) {
     localStorage.setItem(entry.storageKey, src);
     return;
   }
+  const dynamicInfo = tmGetDynamicDevicePartialInfo(filename);
+  if (dynamicInfo) {
+    localStorage.setItem(dynamicInfo.storageKey, src);
+    return;
+  }
   localStorage.setItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename), src);
 }
 
@@ -568,6 +664,11 @@ function tmResetTemplate(filename) {
   const entry = tmGetRegistryEntry(filename);
   if (entry) {
     tmRemoveRegistryTemplate(entry);
+    return;
+  }
+  const dynamicInfo = tmGetDynamicDevicePartialInfo(filename);
+  if (dynamicInfo) {
+    localStorage.removeItem(dynamicInfo.storageKey);
     return;
   }
   localStorage.removeItem(TM_STORAGE_PREFIX + tmNormalizeFilename(filename));
@@ -584,6 +685,9 @@ function tmListCustomTemplates() {
       results.add(entry.uploadName);
     }
   });
+  tmListDynamicDevicePartials().forEach(function(info) {
+    if (tmReadDynamicDevicePartial(info)) results.add(info.uploadName);
+  });
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key || !key.startsWith(TM_STORAGE_PREFIX)) continue;
@@ -597,18 +701,20 @@ function tmListCustomTemplates() {
 
 function tmListLegacyLoadedTemplates() {
   return tmListCustomTemplates().filter(function(filename) {
-    return !tmGetRegistryEntry(filename);
+    return !tmGetRegistryEntry(filename) && !tmGetDynamicDevicePartialInfo(filename);
   }).sort();
 }
 
 function tmIsAcceptedUpload(filename) {
   const normalized = tmNormalizeFilename(filename);
-  return !!tmGetRegistryEntry(filename) || !!TM_LEGACY_ALLOWED_FILES[normalized];
+  return !!tmGetRegistryEntry(filename) || !!tmGetDynamicDevicePartialInfo(filename) || !!TM_LEGACY_ALLOWED_FILES[normalized];
 }
 
 function tmGetUploadTargetName(filename) {
   const entry = tmGetRegistryEntry(filename);
-  return entry ? entry.uploadName : tmNormalizeFilename(filename);
+  if (entry) return entry.uploadName;
+  const dynamicInfo = tmGetDynamicDevicePartialInfo(filename);
+  return dynamicInfo ? dynamicInfo.uploadName : tmNormalizeFilename(filename);
 }
 
 function tmRegisterCustomPartial(filename, src) {
@@ -616,6 +722,11 @@ function tmRegisterCustomPartial(filename, src) {
   const entry = tmGetRegistryEntry(filename);
   if (entry && entry.partialName) {
     Handlebars.registerPartial(entry.partialName, src);
+    return;
+  }
+  const dynamicInfo = tmGetDynamicDevicePartialInfo(filename);
+  if (dynamicInfo) {
+    Handlebars.registerPartial(dynamicInfo.partialName, src);
     return;
   }
   const base = tmNormalizeFilename(filename).replace(/\.hbs$/i, '');
@@ -679,8 +790,15 @@ function tmCreateManagerRow(name, description, statusText, statusKind, canReset,
   return row;
 }
 
+function tmReadTemplateEntry(entry) {
+  if (!entry) return null;
+  return entry.storageKey && entry.id && entry.id.indexOf('uc.dynamicDevice.') === 0
+    ? tmReadDynamicDevicePartial(entry)
+    : tmReadRegistryTemplate(entry);
+}
+
 function tmRenderRegistryGroup(list, groupKey, title, health) {
-  const entries = tmListRegistryEntries().filter(function(entry) {
+  const entries = tmListTemplateEntries().filter(function(entry) {
     return entry.group === groupKey;
   });
   if (!entries.length) return;
@@ -692,7 +810,7 @@ function tmRenderRegistryGroup(list, groupKey, title, health) {
 
   entries.forEach(function(entry) {
     const healthEntry = tmGetHealthEntry(health, entry.id);
-    const isCustom = !!tmReadRegistryTemplate(entry);
+    const isCustom = !!tmReadTemplateEntry(entry);
     const canReset = isCustom || !!(healthEntry && healthEntry.message);
     const statusText = healthEntry ? healthEntry.status : (isCustom ? 'Custom' : 'Bundled');
     const statusKind = statusText === 'Invalid'
@@ -848,6 +966,16 @@ function tmApplyCustomTemplatesToCache() {
         console.warn('[template-manager] compile error for', entry.uploadName, e);
       }
     }
+  });
+
+  tmListDynamicDevicePartials().forEach(function(info) {
+    var src = tmReadDynamicDevicePartial(info);
+    if (!src) return;
+    if (src.indexOf('../unit.') !== -1) {
+      src = src.replace(/\.\.\/unit\./g, 'unit.');
+      try { localStorage.setItem(info.storageKey, src); } catch (e) {}
+    }
+    Handlebars.registerPartial(info.partialName, src);
   });
 }
 

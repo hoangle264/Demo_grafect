@@ -27,7 +27,7 @@ ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
 LD   CR2002           ; Always ON
 {{#each cylinders}}
 {{#if ErrorA}}
-MOV  {{pad ErrorA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
+MOV  {{pad ErrorA}}{{{unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{unit.label}}}_Error
 {{/if}}
 {{/each}}
 LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
@@ -88,12 +88,12 @@ LDB  {{pad unit.flagManual}}; Manual
 MPS
 {{#each cysWithOut}}
 {{#if CoilA}}
-ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANP  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{{stackBeforeDirB}}}
 {{#if CoilB}}
-ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANP  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{#if stackAfterDirB}}
@@ -103,11 +103,11 @@ RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{else}}
 {{#with cysWithOut.[0]}}
 {{#if CoilA}}
-ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANP  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{#if CoilB}}
-ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANP  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{/with}}
@@ -286,15 +286,7 @@ ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
   // ── src/templates/main-output.hbs ────────────────────────────────────────
   'main-output': `;<h1>OUTPUT SECTION (AUTO/MANUAL)
 {{#each devices}}
-{{#if (eq kind "cylinder")}}
-{{> device_cylinder unit=unit }}
-{{else if (eq kind "servo")}}
-{{> device_servo unit=unit }}
-{{else if (eq kind "motor")}}
-{{> device_motor unit=unit }}
-{{else}}
-; WARNING: Unknown device kind for {{{label}}}
-{{/if}}
+{{{renderDeviceOutput this ../unit}}}
 {{/each}}
 `,
 
@@ -384,7 +376,7 @@ ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{
   // ── src/templates/devices/motor.hbs ──────────────────────────────────────
   device_motor: `;{{{label}}}
 {{#if fwdAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
+LD   {{pad unit.flagAuto}}; Auto
 {{#if fwdStepAddr}}
 AND  {{pad fwdStepAddr}}; {{{label}}} Fwd step active
 {{/if}}
@@ -394,7 +386,7 @@ ANB  {{pad revAddr}}; {{{label}}} Rev (interlock)
 {{#if overloadAddr}}
 ANB  {{pad overloadAddr}}; {{{label}}} Overload/Fault
 {{/if}}
-LD   {{pad ../unit.flagManual}}; Manual
+LD   {{pad unit.flagManual}}; Manual
 {{#if fwdManFlag}}
 ANP  {{pad fwdManFlag}}; sys_man_{{{label}}}_Fwd
 {{/if}}
@@ -402,7 +394,7 @@ ORL
 OUT  {{pad fwdAddr}}; {{{label}}}_Fwd
 {{/if}}
 {{#if revAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
+LD   {{pad unit.flagAuto}}; Auto
 {{#if revStepAddr}}
 AND  {{pad revStepAddr}}; {{{label}}} Rev step active
 {{/if}}
@@ -412,7 +404,7 @@ ANB  {{pad fwdAddr}}; {{{label}}} Fwd (interlock)
 {{#if overloadAddr}}
 ANB  {{pad overloadAddr}}; {{{label}}} Overload/Fault
 {{/if}}
-LD   {{pad ../unit.flagManual}}; Manual
+LD   {{pad unit.flagManual}}; Manual
 {{#if revManFlag}}
 ANP  {{pad revManFlag}}; sys_man_{{{label}}}_Rev
 {{/if}}
@@ -421,34 +413,48 @@ OUT  {{pad revAddr}}; {{{label}}}_Rev
 {{/if}}
 {{#if overloadAddr}}
 LD   {{pad overloadAddr}}; {{{label}}} Overload/Fault
-SET  {{pad ../unit.flagError}}; Error (motor fault)
+SET  {{pad unit.flagError}}; Error (motor fault)
 {{/if}}
 `,
 
   // ── src/templates/devices/servo.hbs ──────────────────────────────────────
   device_servo: `;{{{label}}}
 {{#if enableAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 OUT  {{pad enableAddr}}; {{{label}}}_Enable
 {{/if}}
 {{#if targetPos}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 DMOV {{{targetPos}}} ; {{{label}}}_TargetPos
 {{/if}}
 {{#if velocityAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 MOV  #100   {{pad velocityAddr}}; {{{label}}}_Velocity
 {{/if}}
 {{#if resetErrAddr}}
-LD   {{pad ../unit.flagResetPulse}}; Reset Error pulse
+LD   {{pad unit.flagResetPulse}}; Reset Error pulse
 OUT  {{pad resetErrAddr}}; {{{label}}}_ResetErr
 {{/if}}
 {{#if inPositionAddr}}
 LD   {{pad enableAddr}}; {{{label}}}_Enable
 AND  {{pad inPositionAddr}}; {{{label}}}_InPosition
+{{/if}}
+`,
+
+  // ── src/templates/devices/generic.hbs ────────────────────────────────────
+  device_generic: `; WARNING: Generic output renderer for {{{kind}}} device {{{label}}}
+{{#if renderWarning}}
+; {{{renderWarning}}}
+{{/if}}
+{{#if outputAddr}}
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad outputAddr}}; {{{label}}}_Output
+{{else}}
+; WARNING: {{{label}}} has no outputAddr; no output emitted.
 {{/if}}
 `,
 
@@ -470,6 +476,19 @@ function ucInjectBundledTemplates() {
     Handlebars.registerHelper('eq', function(a, b) { return a === b; });
     Handlebars.registerHelper('padStart2', function(n) {
       return String((n != null ? Number(n) : 0) + 1).padStart(2, '0');
+    });
+    Handlebars.registerHelper('resolveDevicePartial', function(device) {
+      var dev = device || this || {};
+      return dev.outputPartial || dev.partialName || ('device_' + String(dev.templateKey || dev.kind || 'generic').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''));
+    });
+    Handlebars.registerHelper('renderDeviceOutput', function(device, unit) {
+      var dev = device || this || {};
+      var key = String(dev.templateKey || dev.kind || 'generic').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+      var name = dev.outputPartial || dev.partialName || ('device_' + (key || 'generic'));
+      var partial = Handlebars.partials && (Handlebars.partials[name] || Handlebars.partials.device_generic);
+      if (!partial) return new Handlebars.SafeString('; WARNING: Missing device output partial for ' + (dev.label || 'device'));
+      var renderer = typeof partial === 'function' ? partial : Handlebars.compile(partial);
+      return new Handlebars.SafeString(renderer(Object.assign({}, dev, { unit: unit || dev.unit || {} })));
     });
     Handlebars.__ucHelpersRegistered = true;
   }

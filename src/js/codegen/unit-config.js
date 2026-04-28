@@ -593,6 +593,127 @@ function ucFindFirstSignalAddress(signalMap, candidates) {
   }).find(Boolean) || '';
 }
 
+const UC_DEVICE_RENDER_REGISTRY = {
+  cylinder: { templateKey: 'cylinder', partialName: 'device_cylinder', file: 'devices/cylinder.hbs' },
+  servo:    { templateKey: 'servo',    partialName: 'device_servo',    file: 'devices/servo.hbs' },
+  motor:    { templateKey: 'motor',    partialName: 'device_motor',    file: 'devices/motor.hbs' },
+  generic:  { templateKey: 'generic',  partialName: 'device_generic',  file: 'devices/generic.hbs' }
+};
+
+const UC_DEVICE_TEMPLATE_ALIASES = {
+  cylinder: 'cylinder',
+  cylinders: 'cylinder',
+  servo: 'servo',
+  servos: 'servo',
+  motor: 'motor',
+  motors: 'motor',
+  generic: 'generic'
+};
+
+function ucNormalizeDeviceKind(kind) {
+  return ucNormalizeTemplateKey(kind || 'cylinder') || 'cylinder';
+}
+
+function ucNormalizeTemplateKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function ucResolveDeviceTemplateKey(dev) {
+  const raw = (dev && (dev.templateKey || dev.outputTemplate || dev.kind || dev.name || dev.type)) || 'cylinder';
+  const normalized = ucNormalizeTemplateKey(raw) || 'cylinder';
+  return UC_DEVICE_TEMPLATE_ALIASES[normalized] || normalized;
+}
+
+function ucDevicePartialNameFromTemplateKey(templateKey) {
+  const key = ucNormalizeTemplateKey(templateKey) || 'generic';
+  return 'device_' + key;
+}
+
+function ucIsHandlebarsPartialRegistered(partialName) {
+  if (!partialName) return false;
+  if (typeof Handlebars === 'undefined' || !Handlebars.partials) return false;
+  return !!Handlebars.partials[partialName];
+}
+
+function ucIsCoreDevicePartial(partialName) {
+  return Object.keys(UC_DEVICE_RENDER_REGISTRY).some(function(key) {
+    return UC_DEVICE_RENDER_REGISTRY[key].partialName === partialName;
+  });
+}
+
+function ucResolveDevicePartialName(dev) {
+  if (!dev) return 'device_generic';
+  if (dev.partialName && (ucIsCoreDevicePartial(dev.partialName) || ucIsHandlebarsPartialRegistered(dev.partialName))) {
+    return dev.partialName;
+  }
+  if (dev.outputPartial && (ucIsCoreDevicePartial(dev.outputPartial) || ucIsHandlebarsPartialRegistered(dev.outputPartial))) {
+    return dev.outputPartial;
+  }
+  const desired = ucDevicePartialNameFromTemplateKey(dev.templateKey || dev.kind);
+  if (ucIsCoreDevicePartial(desired) || ucIsHandlebarsPartialRegistered(desired)) return desired;
+  return 'device_generic';
+}
+
+function ucListDevicePartialRegistryEntries() {
+  return Object.keys(UC_DEVICE_RENDER_REGISTRY).map(function(key) {
+    return UC_DEVICE_RENDER_REGISTRY[key];
+  });
+}
+
+function ucRenderDeviceOutput(device, unit) {
+  if (typeof Handlebars === 'undefined') return '';
+  const partialName = ucResolveDevicePartialName(device);
+  let partial = Handlebars.partials && Handlebars.partials[partialName];
+  if (!partial && partialName !== 'device_generic') {
+    partial = Handlebars.partials && Handlebars.partials.device_generic;
+  }
+  if (!partial) return '; WARNING: Missing device output partial for ' + ((device && device.label) || 'device');
+  const renderer = typeof partial === 'function' ? partial : Handlebars.compile(partial);
+  const context = Object.assign({}, device || {}, { unit: unit || (device && device.unit) || {} });
+  return renderer(context);
+}
+
+function ucDecorateDeviceForTemplate(dev, unit) {
+  const base = Object.assign({}, dev || {});
+  const kind = ucNormalizeDeviceKind(base.kind);
+  const templateKey = ucResolveDeviceTemplateKey(Object.assign({}, base, { kind: kind }));
+  const desiredPartial = ucDevicePartialNameFromTemplateKey(templateKey);
+  const partialName = ucIsCoreDevicePartial(desiredPartial) || ucIsHandlebarsPartialRegistered(desiredPartial)
+    ? desiredPartial
+    : 'device_generic';
+  const usesGenericPartial = partialName === 'device_generic' && desiredPartial !== 'device_generic';
+  const label = base.label || base.id || kind;
+  return Object.assign(base, {
+    kind: kind,
+    templateKey: templateKey,
+    partialName: partialName,
+    outputPartial: partialName,
+    usesGenericPartial: usesGenericPartial,
+    renderWarning: usesGenericPartial
+      ? 'WARNING: No output template for device kind "' + kind + '" (partial ' + desiredPartial + ') on ' + label + '; using generic fallback.'
+      : '',
+    label: label,
+    unit: unit
+  });
+}
+
+function ucAddDeviceGroupAliases(target, devicesByKind) {
+  const reserved = new Set(Object.keys(target).concat([
+    'unit', 'devices', 'devicesByKind', 'cylinders', 'stationFlows', 'originSteps'
+  ]));
+  Object.keys(devicesByKind).forEach(function(kind) {
+    const alias = kind.endsWith('s') ? kind : kind + 's';
+    if (!alias || reserved.has(alias)) return;
+    target[alias] = devicesByKind[kind];
+    reserved.add(alias);
+  });
+  return target;
+}
+
 function ucResolveDeviceSignalAddress(lookupVars, deviceId, signalName) {
   if (!deviceId || !signalName) return '';
   const v = (lookupVars || []).find(function(x) { return x.label === deviceId; });
@@ -1721,6 +1842,12 @@ function ucRegisterHandlebarsHelpers() {
   Handlebars.registerHelper('padStart2', function(n) {
     return String((n != null ? Number(n) : 0) + 1).padStart(2, '0');
   });
+  Handlebars.registerHelper('resolveDevicePartial', function(device) {
+    return ucResolveDevicePartialName(device || this);
+  });
+  Handlebars.registerHelper('renderDeviceOutput', function(device, unit) {
+    return new Handlebars.SafeString(ucRenderDeviceOutput(device || this, unit));
+  });
   Handlebars.__ucHelpersRegistered = true;
 }
 
@@ -1761,11 +1888,10 @@ function ucLoadTemplates() {
     });
 
   const devicePartials = [
-    { name: 'step_body',       file: 'step-body.hbs' },
-    { name: 'device_cylinder', file: 'devices/cylinder.hbs' },
-    { name: 'device_servo',    file: 'devices/servo.hbs' },
-    { name: 'device_motor',    file: 'devices/motor.hbs' },
-  ];
+    { name: 'step_body', file: 'step-body.hbs' }
+  ].concat(ucListDevicePartialRegistryEntries().map(function(entry) {
+    return { name: entry.partialName, file: entry.file };
+  }));
   const partialPromises = devicePartials.map(function(p) {
     return fetch(base + p.file)
       .then(function(res) {
@@ -1958,20 +2084,33 @@ function cgUCBuildTemplateContext(ctx) {
     return { kind: 'cylinder', id: cy.id };
   });
   const devices = rawDeviceList.map(function(dev) {
-    const kind = dev.kind || 'cylinder';
+    const kind = ucNormalizeDeviceKind(dev.kind);
+    let baseDevice;
     if (kind === 'cylinder') {
       const enriched = cylinderMap[dev.id];
-      if (enriched) return Object.assign({ kind: 'cylinder', unit: u }, enriched);
-      return Object.assign({ kind: 'cylinder', unit: u }, dev);
+      baseDevice = enriched ? Object.assign({}, dev, enriched, { kind: 'cylinder' }) : Object.assign({ kind: 'cylinder' }, dev);
+    } else {
+      baseDevice = Object.assign({ kind: kind }, dev);
     }
-    // servo / motor: pass through raw JSON props with kind tag
-    return Object.assign({ kind: kind, unit: u }, dev);
+    return ucDecorateDeviceForTemplate(baseDevice, u);
   });
 
-  return {
+  const devicesByKind = {};
+  devices.forEach(function(dev) {
+    const key = dev.kind || 'unknown';
+    if (!devicesByKind[key]) devicesByKind[key] = [];
+    devicesByKind[key].push(dev);
+  });
+
+  const dynamicDeviceWarnings = devices
+    .filter(function(dev) { return dev.renderWarning; })
+    .map(function(dev) { return dev.renderWarning; });
+
+  const tplCtx = {
     unit:              u,
     cylinders:         cylinders,
     devices:           devices,
+    devicesByKind:     devicesByKind,
     cysWithOut:        cysWithOutEnriched,
     hasCylinders:      cys.length > 0,
     isSingleCylinder:  cys.length === 1,
@@ -1984,7 +2123,10 @@ function cgUCBuildTemplateContext(ctx) {
     lastOriginStep:    lastOriginStep,
     stationFlows:      stationFlows,
     firstCyLabel:      firstCyLabel,
+    warnings:          ((ctx.warnings || []).concat(dynamicDeviceWarnings))
   };
+
+  return ucAddDeviceGroupAliases(tplCtx, devicesByKind);
 }
 
 // ─── Tự động tải templates khi page load ─────────────────────────────────────
