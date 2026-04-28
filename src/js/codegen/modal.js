@@ -9,10 +9,36 @@
 //  resolveStepsThrough(), toast(), esc2()
 // ═══════════════════════════════════════════════════════════
 
+let CG_DEFAULT_DEVLIB_LOADED = false;
+let CG_DEFAULT_DEVLIB_LOADING = null;
+
+function cgEnsureBundledDeviceLibrary() {
+  if (CG_DEFAULT_DEVLIB_LOADED) return;
+  if (CG_DEFAULT_DEVLIB_LOADING) return;
+  CG_DEFAULT_DEVLIB_LOADING = fetch('config/Devices.json')
+    .then(function(res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      if (typeof cgLoadDeviceLibrary === 'function') cgLoadDeviceLibrary(data);
+      if (typeof ucLoadDeviceCommandLibrary === 'function') ucLoadDeviceCommandLibrary(data);
+      CG_DEFAULT_DEVLIB_LOADED = true;
+      if (typeof cgUpdatePreview === 'function') cgUpdatePreview();
+    })
+    .catch(function(err) {
+      console.warn('[modal] không load được config/Devices.json:', err);
+    })
+    .finally(function() {
+      CG_DEFAULT_DEVLIB_LOADING = null;
+    });
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 function showGenerateCodeModal() {
   // Cho phép mở modal ngay cả khi không có diagram — unit-config mode không cần diagram
   if (activeDiagramId && typeof flushState === 'function') flushState();
+  cgEnsureBundledDeviceLibrary();
 
   let el = document.getElementById('modal-codegen');
   if (el) el.remove();
@@ -121,7 +147,7 @@ function showGenerateCodeModal() {
               <input type="file" id="uc-devlib-file" accept=".json"
                 style="font-size:10px;color:var(--cyan);background:var(--bg);
                 border:1px solid var(--border);border-radius:3px;padding:2px 6px;flex:1;min-width:0;"
-                onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
+                onchange="cgUCLoadFile('uc-devlib-file', function(d){ cgLoadDeviceLibrary(d); if (typeof ucLoadDeviceCommandLibrary === 'function') ucLoadDeviceCommandLibrary(d); cgUCUpdateStatus(); cgUpdatePreview(); })">
             </div>
             <div style="display:flex;align-items:center;gap:8px;">
               <label style="font-size:9px;color:var(--text3);width:110px;flex-shrink:0;">Runtime Metadata: <span style="font-size:8px;">(optional)</span></label>
@@ -693,4 +719,3 @@ function cgToggleTemplateManager() {
   if (chevron) chevron.textContent = open ? '▶' : '▼';
   if (!open) tmRenderManagerList();
 }
-
