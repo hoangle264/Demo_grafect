@@ -614,7 +614,11 @@ function ucResolveDeviceSignalAddress(lookupVars, deviceId, signalName) {
 }
 
 function ucGetCylinderCommands(cy) {
-  const commands = (cy && cy.commands) || {};
+  const commands = Object.assign(
+    {},
+    ucGetDeviceLibraryCommands(cy, 'cylinder'),
+    (cy && cy.commands) || {}
+  );
   return {
     extend: Object.assign({
       actionLabel: 'Cylinder Extend',
@@ -627,6 +631,58 @@ function ucGetCylinderCommands(cy) {
       complete: { sensor: 'LSL', sensorLabel: 'Cylinder Low Limit' }
     }, commands.retract || {})
   };
+}
+
+let UC_DEVICE_COMMAND_LIBRARY = {};
+
+function ucNormalizeCommandLibrary(config) {
+  const map = {};
+  if (!config || typeof config !== 'object') return map;
+
+  function putEntry(key, commands) {
+    if (!key || !commands || typeof commands !== 'object') return;
+    map[String(key).toLowerCase()] = commands;
+  }
+
+  if (config.deviceId && config.commands) {
+    putEntry(config.deviceId, config.commands);
+    putEntry(config.name, config.commands);
+    return map;
+  }
+
+  if (Array.isArray(config.devices)) {
+    config.devices.forEach(function(d) {
+      if (!d || typeof d !== 'object') return;
+      putEntry(d.deviceId || d.kind || d.id || d.name, d.commands);
+      putEntry(d.name, d.commands);
+    });
+  }
+
+  Object.keys(config).forEach(function(k) {
+    const v = config[k];
+    if (v && typeof v === 'object' && v.commands) {
+      putEntry(k, v.commands);
+      putEntry(v.deviceId || v.name || v.kind, v.commands);
+    }
+  });
+
+  return map;
+}
+
+function ucLoadDeviceCommandLibrary(config) {
+  UC_DEVICE_COMMAND_LIBRARY = ucNormalizeCommandLibrary(config);
+}
+
+function ucGetDeviceLibraryCommands(dev, fallbackKey) {
+  const d = dev || {};
+  const keys = [
+    d.deviceId, d.kind, d.type, d.id, d.name, d.label, fallbackKey
+  ].filter(Boolean).map(function(x) { return String(x).toLowerCase(); });
+  for (let i = 0; i < keys.length; i += 1) {
+    const hit = UC_DEVICE_COMMAND_LIBRARY[keys[i]];
+    if (hit && typeof hit === 'object') return hit;
+  }
+  return {};
 }
 
 function ucFindCylinderCommandByDrive(cy, driveSignal) {
