@@ -286,6 +286,7 @@ ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
   // ── src/templates/main-output.hbs ────────────────────────────────────────
   'main-output': `;<h1>OUTPUT SECTION (AUTO/MANUAL)
 {{#each devices}}
+;DEVICE {{kind}} {{label}}
 {{{renderDeviceOutput this ../unit}}}
 {{/each}}
 `,
@@ -300,7 +301,11 @@ const UC_PARTIAL_BUNDLE = {
   //  *** SỬA ĐÂY để thay đổi format completion của mỗi step ***
   //  Mặc định: LD addr → AND complete → OUT cmpAddr
   step_body: `LD   {{pad addr}}; {{{actionLabel}}}
+{{#if completeValue}}
+AND= {{pad complete}} {{completeValue}}; {{{completeLabel}}}
+{{else}}
 AND  {{pad complete}}; {{{completeLabel}}}
+{{/if}}
 OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
 
@@ -441,6 +446,66 @@ OUT  {{pad resetErrAddr}}; {{{label}}}_ResetErr
 {{#if inPositionAddr}}
 LD   {{pad enableAddr}}; {{{label}}}_Enable
 AND  {{pad inPositionAddr}}; {{{label}}}_InPosition
+{{/if}}
+`,
+
+  // ── src/templates/devices/device_robot.hbs ──────────────────────────────
+  device_robot: `;{{{label}}} - Robot {{{id}}}
+
+{{#each commandList}}
+{{#if driveSignal}}
+{{#with (lookup ../signalsByName driveSignal) as |driveAddr|}}
+{{#if driveAddr}}
+LD   {{pad ../../unit.flagAuto}}; Auto
+ANB  {{pad ../../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../../label}}}_{{{../name}}}
+{{/if}}
+{{/with}}
+{{/if}}
+{{/each}}
+
+{{#if signalsByName.PowerON}}
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.PowerON}}; {{{label}}}_PowerON
+{{/if}}
+
+{{#if signalsByName.AutoMode}}
+LD   {{pad unit.flagAuto}}; Auto
+OUT  {{pad signalsByName.AutoMode}}; {{{label}}}_AutoMode
+{{/if}}
+
+{{#if signalsByName.Run}}
+LD   {{pad unit.flagAuto}}; Auto
+OUT  {{pad signalsByName.Run}}; {{{label}}}_Run
+{{/if}}
+
+{{#if signalsByName.Point1}}
+LD   {{pad unit.flagAuto}}; Auto
+AND  {{pad signalsByName.Point1}}; Movement command Point1
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Point1}}; {{{unit.label}}}_{{{label}}}_Point1_Cmd
+{{/if}}
+
+{{#if signalsByName.Point2}}
+LD   {{pad unit.flagAuto}}; Auto
+AND  {{pad signalsByName.Point2}}; Movement command Point2
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Point2}}; {{{unit.label}}}_{{{label}}}_Point2_Cmd
+{{/if}}
+
+{{#if signalsByName.Point3}}
+LD   {{pad unit.flagAuto}}; Auto
+AND  {{pad signalsByName.Point3}}; Movement command Point3
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Point3}}; {{{unit.label}}}_{{{label}}}_Point3_Cmd
+{{/if}}
+
+{{#if signalsByName.Point4}}
+LD   {{pad unit.flagAuto}}; Auto
+AND  {{pad signalsByName.Point4}}; Movement command Point4
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Point4}}; {{{unit.label}}}_{{{label}}}_Point4_Cmd
 {{/if}}
 `,
 

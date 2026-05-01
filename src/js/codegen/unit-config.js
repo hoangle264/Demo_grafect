@@ -399,12 +399,21 @@ function ucNormalizeDeviceList(unitConfig) {
     });
   }
   // v1 Excel fallback: auto-detect devices từ project.excelVars
-  // Mỗi var có format='Cylinder' → một cylinder device entry
+  // Lấy TẤT CẢ format (Cylinder, Robot, ...) → một device entry
   const excelVars = (typeof project !== 'undefined' && project.excelVars) ? project.excelVars : [];
-  const cylinderVars = excelVars.filter(function(v) { return v.format === 'Cylinder'; });
-  if (cylinderVars.length) {
-    return cylinderVars.map(function(v, i) {
-      return { kind: 'cylinder', id: v.label, label: v.label, index: i };
+  const allDeviceVars = excelVars.filter(function(v) { 
+    return v && v.format && v.format !== 'Unit Station'; // bỏ Unit Station
+  });
+  if (allDeviceVars.length) {
+    return allDeviceVars.map(function(v, i) {
+      const kind = ucNormalizeDeviceKind(v.format); // normalize 'Robot' → 'robot'
+      return {
+        kind: kind,
+        id: v.label,
+        label: v.label,
+        signalAddresses: v.signalAddresses || {},
+        index: i
+      };
     });
   }
   return [];
@@ -495,12 +504,18 @@ function ucBuildSyntheticConfig(selectedUnitId) {
 
   if (!Object.keys(ucEntry).length) return null;
 
-  // Devices: auto-detect từ excelVars (Cylinder type)
+  // Devices: auto-detect từ excelVars (all device types)
   const excelVars = (typeof project !== 'undefined' && project.excelVars) || [];
   const devices = excelVars
-    .filter(function(v) { return v.format === 'Cylinder'; })
+    .filter(function(v) { return v && v.format && v.format !== 'Unit Station'; })
     .map(function(v, i) {
-      return { kind: 'cylinder', id: v.label, label: v.label, index: i };
+      return {
+        kind: ucNormalizeDeviceKind(v.format),
+        id: v.label,
+        label: v.label,
+        signalAddresses: v.signalAddresses || {},
+        index: i
+      };
     });
 
   const effectiveLabel = unitLabel || ucEntry.label || Object.keys(unitConfig).find(k => unitConfig[k] === ucEntry) || 'Unit';
@@ -597,7 +612,8 @@ const UC_DEVICE_RENDER_REGISTRY = {
   cylinder: { templateKey: 'cylinder', partialName: 'device_cylinder', file: 'devices/cylinder.hbs' },
   servo:    { templateKey: 'servo',    partialName: 'device_servo',    file: 'devices/servo.hbs' },
   motor:    { templateKey: 'motor',    partialName: 'device_motor',    file: 'devices/motor.hbs' },
-  generic:  { templateKey: 'generic',  partialName: 'device_generic',  file: 'devices/generic.hbs' }
+  generic:  { templateKey: 'generic',  partialName: 'device_generic',  file: 'devices/generic.hbs' },
+  robot:    { templateKey: 'robot',    partialName: 'device_robot',    file: 'devices/device_robot.hbs' }
 };
 
 const UC_DEVICE_TEMPLATE_ALIASES = {
@@ -607,7 +623,8 @@ const UC_DEVICE_TEMPLATE_ALIASES = {
   servos: 'servo',
   motor: 'motor',
   motors: 'motor',
-  generic: 'generic'
+  generic: 'generic',
+  robot: 'robot'  
 };
 
 function ucNormalizeDeviceKind(kind) {
@@ -701,6 +718,59 @@ function ucDecorateDeviceForTemplate(dev, unit) {
   });
 }
 
+function ucFindExcelVarByDeviceId(deviceId) {
+  if (!deviceId) return null;
+  const excelVars = (typeof project !== 'undefined' && project.excelVars) ? project.excelVars : [];
+  const needle = String(deviceId).trim().toLowerCase();
+  return excelVars.find(function(v) {
+    return v && String(v.label || '').trim().toLowerCase() === needle;
+  }) || null;
+}
+
+function ucBuildSignalsByName(formatName, signalAddresses) {
+  const byName = {};
+  const src = signalAddresses || {};
+  Object.keys(src).forEach(function(key) {
+    if (src[key] !== undefined && src[key] !== '') byName[key] = src[key];
+  });
+  if (!formatName) return byName;
+  const devType = (typeof project !== 'undefined' && project.devices || [])
+    .find(function(d) { return d && String(d.name || '').toLowerCase() === String(formatName).toLowerCase(); });
+  if (!devType || !Array.isArray(devType.signals)) return byName;
+  devType.signals.forEach(function(sig) {
+    if (!sig || !sig.name) return;
+    const addr = src[sig.id];
+    if (addr !== undefined && addr !== '') byName[sig.name] = addr;
+  });
+  return byName;
+}
+
+function ucEnrichDeviceSignals(dev) {
+  const base = Object.assign({}, dev || {});
+  const hit = ucFindExcelVarByDeviceId(base.id || base.label);
+  const mergedSignalAddresses = Object.assign({}, (hit && hit.signalAddresses) || {}, base.signalAddresses || {});
+  const formatName = base.format || (hit && hit.format) || base.rawKind || '';
+  const signalsByName = ucBuildSignalsByName(formatName, mergedSignalAddresses);
+  const normalizedSignalAddresses = Object.assign({}, mergedSignalAddresses, signalsByName);
+  const normalizedKind = ucNormalizeDeviceKind(base.kind || formatName || base.rawKind || 'generic');
+  const mergedCommands = ucGetDeviceCommands(Object.assign({}, base, {
+    kind: normalizedKind,
+    format: formatName,
+    rawKind: base.rawKind || (hit && hit.format) || ''
+  }));
+  const commandList = Object.keys(mergedCommands || {}).map(function(name) {
+    return Object.assign({ name: name }, mergedCommands[name] || {});
+  });
+  return Object.assign(base, {
+    signalAddresses: normalizedSignalAddresses,
+    signalsByName: signalsByName,
+    commands: mergedCommands,
+    commandList: commandList,
+    format: formatName,
+    rawKind: base.rawKind || (hit && hit.format) || ''
+  });
+}
+
 function ucAddDeviceGroupAliases(target, devicesByKind) {
   const reserved = new Set(Object.keys(target).concat([
     'unit', 'devices', 'devicesByKind', 'cylinders', 'stationFlows', 'originSteps'
@@ -752,6 +822,23 @@ function ucGetCylinderCommands(cy) {
       complete: { sensor: 'LSL', sensorLabel: 'Cylinder Low Limit' }
     }, commands.retract || {})
   };
+}
+
+function ucGetDeviceCommands(dev) {
+  const d = dev || {};
+  const kind = ucNormalizeDeviceKind(d.kind || d.rawKind || d.format || 'generic');
+  if (kind === 'cylinder') return ucGetCylinderCommands(d);
+  return Object.assign({}, ucGetDeviceLibraryCommands(d, kind), d.commands || {});
+}
+
+function ucFindDeviceCommandByDrive(dev, driveSignal) {
+  const commands = ucGetDeviceCommands(dev);
+  const target = String(driveSignal || '').toLowerCase();
+  return Object.keys(commands).map(function(key) {
+    return Object.assign({ name: key }, commands[key] || {});
+  }).find(function(cmd) {
+    return String(cmd.driveSignal || '').toLowerCase() === target;
+  }) || null;
 }
 
 let UC_DEVICE_COMMAND_LIBRARY = {};
@@ -807,11 +894,7 @@ function ucGetDeviceLibraryCommands(dev, fallbackKey) {
 }
 
 function ucFindCylinderCommandByDrive(cy, driveSignal) {
-  const commands = ucGetCylinderCommands(cy);
-  const target = String(driveSignal || '').toLowerCase();
-  return Object.keys(commands).map(function(key) { return commands[key]; }).find(function(cmd) {
-    return String(cmd.driveSignal || '').toLowerCase() === target;
-  }) || null;
+  return ucFindDeviceCommandByDrive(Object.assign({ kind: 'cylinder' }, cy || {}), driveSignal);
 }
 
 // ─── Build context object từ unitConfig + canvas diagrams ────────────────────
@@ -1023,18 +1106,18 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
 
       let complete = '';
       let completeLabel = '';
+      let completeValue = '';
       actions.some(function(act) {
-        const cy = deviceList.find(function(dev) {
-          return (dev.kind || 'cylinder') === 'cylinder' && dev.id === act.devLabel;
-        });
-        if (!cy || !ucIsExecuteSignal(act.sigName)) return false;
-        const cmd = ucFindCylinderCommandByDrive(cy, act.sigName);
+        const dev = deviceList.find(function(d) { return d && d.id === act.devLabel; });
+        if (!dev) return false;
+        const cmd = ucFindDeviceCommandByDrive(dev, act.sigName);
         const completeSignal = cmd && cmd.complete && cmd.complete.sensor;
         if (!completeSignal) return false;
         const addr = ucResolveDeviceSignalAddress(lookupVars, act.devLabel, completeSignal);
         if (!addr) return false;
         complete = addr;
         completeLabel = act.devLabel + '.' + completeSignal;
+        completeValue = (cmd.complete && cmd.complete.value) || '';
         return true;
       });
       if (!complete && sensor) {
@@ -1051,6 +1134,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         sensorLabel:    sensorLabel,
         complete:       complete,
         completeLabel:  completeLabel,
+        completeValue:  completeValue,
         extraCondition: extraCondition,
         stepIndex:      i,
         stepId:         step.id,
@@ -1346,22 +1430,26 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
     : flags.flagHomed;
 
   // ── Step 6: Post-pass — đảm bảo complete signal cho từng computed step ──────
-  const cylinderMap6 = {};
-  cylinders.forEach(function(cy) { cylinderMap6[cy.id] = cy; });
+  const allDevicesMap = {};
+  deviceList.forEach(function(dev) {
+    if (dev && dev.id) allDevicesMap[dev.id] = dev;
+  });
+  cylinders.forEach(function(cy) { allDevicesMap[cy.id] = Object.assign({}, allDevicesMap[cy.id] || {}, cy, { kind: 'cylinder' }); });
   function assignComplete(stepsArr) {
     stepsArr.forEach(function(step) {
       if (step.complete) return;
       step.actions.some(function(act) {
-        if (!act.devLabel || !ucIsExecuteSignal(act.sigName)) return false;
-        const cy = cylinderMap6[act.devLabel];
-        if (!cy) return false;
-        const cmd = ucFindCylinderCommandByDrive(cy, act.sigName);
+        if (!act.devLabel) return false;
+        const dev = allDevicesMap[act.devLabel];
+        if (!dev) return false;
+        const cmd = ucFindDeviceCommandByDrive(dev, act.sigName);
         const completeSignal = cmd && cmd.complete && cmd.complete.sensor;
         if (!completeSignal) return false;
-        const addr = cy[completeSignal] || '';
+        const addr = ucResolveDeviceSignalAddress(allVarsGlobal, act.devLabel, completeSignal);
         if (!addr) return false;
         step.complete = addr;
         step.completeLabel = act.devLabel + '.' + completeSignal;
+        step.completeValue = (cmd.complete && cmd.complete.value) || '';
         return true;
       });
       if (!step.complete && step.sensor) {
@@ -1967,8 +2055,7 @@ function ucApplyTemplateStrict(name, tplCtx) {
 function ucAltStackInst(i, n) {
   if (n <= 1) return '';
   if (i === 0) return 'MPS';
-  if (i === n - 2) return 'MPP';
-  if (i === n - 1) return '';
+  if (i === n - 1) return 'MPP';
   return 'MRD';
 }
 
@@ -2092,7 +2179,8 @@ function cgUCBuildTemplateContext(ctx) {
     } else {
       baseDevice = Object.assign({ kind: kind }, dev);
     }
-    return ucDecorateDeviceForTemplate(baseDevice, u);
+    const withSignals = ucEnrichDeviceSignals(baseDevice);
+    return ucDecorateDeviceForTemplate(withSignals, u);
   });
 
   const devicesByKind = {};
@@ -2179,6 +2267,9 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   const unitIndexStr = (unitConfig.unit?.unitIndex != null)
     ? 'unitIndex=' + unitConfig.unit.unitIndex
     : 'unitIndex=auto';
+  lines.push('DEVICE:57');
+  lines.push(`;MODULE:${unitLabel}`);
+  lines.push(';MODULE_TYPE:0');
   lines.push('; ╔══════════════════════════════════════════════════════╗');
   lines.push(`; ║  GRAFCET Studio — Unit Config Engine  (${schemaVer.padEnd(3)})         ║`);
   lines.push(`; ║  Unit    : ${unitLabel}║`);
@@ -2262,6 +2353,8 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   }
 
   lines.push('; ── END OF FILE ──────────────────────────────────────────');
+  lines.push('END');
+  lines.push('ENDH');
 
   const rawCode = lines.join('\n');
   const totalCy = ctx.cylinders.length;

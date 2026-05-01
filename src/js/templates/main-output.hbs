@@ -1,7 +1,8 @@
 {{!-- ╔══════════════════════════════════════════════════════════╗ --}}
 {{!-- ║  MAIN OUTPUT — dynamic dispatcher for each device kind   ║ --}}
 {{!-- ╚══════════════════════════════════════════════════════════╝ --}}
-;<h1>OUTPUT SECTION (AUTO/MANUAL)
+;<h1/>OUTPUT SECTION (AUTO/MANUAL)
 {{#each devices}}
+;DEVICE {{kind}} {{label}}
 {{{renderDeviceOutput this ../unit}}}
 {{/each}}

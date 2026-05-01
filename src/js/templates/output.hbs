@@ -61,3 +61,25 @@ ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/if}}
 {{/each}}
+{{!-- Extra legacy output for non-cylinder devices (Robot, Struct Data) --}}
+{{#each devices}}
+  {{#unless (eq kind 'cylinder')}}
+;{{{label}}}
+  {{#if signalsByName.Point1}}
+LD   {{pad signalsByName.Point1}}; Point1
+SET  {{pad signalsByName.Point1}}; Out_{{{label}}}_Point1
+  {{/if}}
+  {{#if signalsByName.Point2}}
+LD   {{pad signalsByName.Point2}}; Point2
+SET  {{pad signalsByName.Point2}}; Out_{{{label}}}_Point2
+  {{/if}}
+  {{#if signalsByName.Point3}}
+LD   {{pad signalsByName.Point3}}; Point3
+SET  {{pad signalsByName.Point3}}; Out_{{{label}}}_Point3
+  {{/if}}
+  {{#if signalsByName.Point4}}
+LD   {{pad signalsByName.Point4}}; Point4
+SET  {{pad signalsByName.Point4}}; Out_{{{label}}}_Point4
+  {{/if}}
+  {{/unless}}
+{{/each}}

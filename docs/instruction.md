@@ -328,6 +328,7 @@ Các cột hiện được hỗ trợ bao gồm:
 - parse qua `eiParseStructCSV(rows, structTypeName)`
 - map cột theo thứ tự `signals[]` của Struct Data type đã chọn trong `project.devices`
 - lưu vào `project.excelVars`
+- `signalAddresses` lưu key theo `sig.id` nội bộ của Struct Data; khi codegen output, `unit-config.js` sẽ chuẩn hóa thêm map theo `sig.name` (`signalsByName`) để template đọc ổn định theo tên signal
 
 ### 9.5 Special case: Struct Data = `Unit Station`
 
@@ -494,6 +495,7 @@ Unit Config output hiện dùng luồng modular qua `main-output.hbs` thay vì h
 ```hbs
 ;<h1>OUTPUT SECTION (AUTO/MANUAL)
 {{#each devices}}
+;DEVICE {{kind}} {{label}}
 {{{renderDeviceOutput this ../unit}}}
 {{/each}}
 ```
@@ -524,8 +526,9 @@ Quy tắc resolve output partial:
    - `device_cylinder`
    - `device_servo`
    - `device_motor`
+   - `device_robot`
    - `device_generic`
-5. Nếu không tìm thấy partial riêng cho kind mới, codegen dùng `device_generic` và ghi warning.
+5. Device output partial nên ưu tiên đọc tín hiệu qua `signalsByName` (map theo `signal.name`). `signalAddresses` chỉ nên coi là raw map theo `sig.id` để tương thích ngược.
 6. `devicesByKind` được thêm vào template context để các template có thể group theo loại device.
 7. `cylinders` và legacy `output.hbs` vẫn được giữ để tương thích, nhưng `output.hbs` chỉ phục vụ luồng cylinder cũ.
 
@@ -630,6 +633,8 @@ Các tên template Unit Config đang được hỗ trợ:
 - `servo.hbs`
 - `motor.hbs`
 - `generic.hbs`
+- `robot.hbs`
+- `device_robot.hbs`
 - custom device partial theo format `device_<kind>.hbs` (ví dụ `device_valve.hbs`)
 
 Legacy keys vẫn còn:
