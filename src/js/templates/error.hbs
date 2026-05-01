@@ -16,12 +16,12 @@ ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
 {{#if unit.errorDMAddr}}
 {{!-- DM mode: aggregate errors via MOV, then compare against #0 --}}
 LD   CR2002           ; Always ON
-{{#each cylinders}}
+{{#with cylinders.[0]}}
 {{#if ErrorA}}
-MOV  {{pad ErrorA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
+MOV  {{pad ErrorA}}{{{../unit.errorDMAddr}}} 
 {{/if}}
-{{/each}}
-LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
+{{/with}}
+LD>  {{pad unit.errorDMAddr}}#0  ; {{{unit.label}}}_Error
 {{else}}
 {{!-- Flag mode: OR all cylinder error flags --}}
 {{#each cylinders}}
