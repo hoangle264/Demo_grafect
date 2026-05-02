@@ -1,0 +1,85 @@
+;<h1/>Output
+{{#each cylinders}}
+{{#if hasOutput}}
+;{{{label}}}
+{{#if hasDirAOutput}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
+ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
+LD   {{pad ../unit.flagManual}}; Manual
+ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
+ORL
+{{#if LockA}}
+ANB  {{pad LockA}}; {{{../unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+{{/if}}
+SET  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{#if CoilB}}
+CON
+RES  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{/if}}
+{{/if}}
+{{#if hasDirBOutput}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#if singleStepDirB}}
+LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
+ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
+{{else}}
+{{#each enrichedStepsDirB}}
+LD   {{pad addr}}; {{{sLabel}}}
+ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
+{{#if needsORL}}
+ORL
+{{/if}}
+{{/each}}
+{{/if}}
+ANL
+LD   {{pad ../unit.flagManual}}; Manual
+ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
+ORL
+{{#if LockB}}
+ANB  {{pad LockB}}; {{{../unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+{{/if}}
+{{#if CoilA}}
+RES  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+CON
+{{/if}}
+SET  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+{{/if}}
+{{#if errTimerDirA}}
+LD   {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad LSH}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
+ANB  {{pad ../unit.flagManual}}; Manual
+ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
+ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}
+{{/if}}
+{{#if errTimerDirB}}
+LD   {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad LSL}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
+ANB  {{pad ../unit.flagManual}}; Manual
+ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
+ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
+{{/if}}
+{{/if}}
+{{/each}}
+{{!-- Extra legacy output for non-cylinder devices (Robot, Struct Data) --}}
+{{#each devices}}
+  {{#unless (eq kind 'cylinder')}}
+;{{{label}}}
+  {{#if signalsByName.Point1}}
+LD   {{pad signalsByName.Point1}}; Point1
+SET  {{pad signalsByName.Point1}}; Out_{{{label}}}_Point1
+  {{/if}}
+  {{#if signalsByName.Point2}}
+LD   {{pad signalsByName.Point2}}; Point2
+SET  {{pad signalsByName.Point2}}; Out_{{{label}}}_Point2
+  {{/if}}
+  {{#if signalsByName.Point3}}
+LD   {{pad signalsByName.Point3}}; Point3
+SET  {{pad signalsByName.Point3}}; Out_{{{label}}}_Point3
+  {{/if}}
+  {{#if signalsByName.Point4}}
+LD   {{pad signalsByName.Point4}}; Point4
+SET  {{pad signalsByName.Point4}}; Out_{{{label}}}_Point4
+  {{/if}}
+  {{/unless}}
+{{/each}}

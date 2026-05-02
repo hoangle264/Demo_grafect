@@ -1,0 +1,32 @@
+;{{{label}}} - {{{kind}}} starter
+
+{{#if signalsByName.Enable}}
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Enable}}; {{{label}}}_Enable
+{{/if}}
+
+{{#if signalsByName.Start}}
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad signalsByName.Start}}; {{{label}}}_Start
+{{/if}}
+
+{{#if signalsByName.Stop}}
+LD   {{pad unit.flagAuto}}; Auto
+OUT  {{pad signalsByName.Stop}}; {{{label}}}_Stop
+{{/if}}
+
+{{#if signalsByName.Reset}}
+LD   {{pad unit.flagResetPulse}}; Reset pulse
+OUT  {{pad signalsByName.Reset}}; {{{label}}}_Reset
+{{/if}}
+
+{{#if signalsByName.Alarm}}
+LD   {{pad signalsByName.Alarm}}; {{{label}}}_Alarm
+SET  {{pad unit.flagError}}; Error
+{{/if}}
+
+{{#if signalsByName.Ready}}
+LD   {{pad signalsByName.Ready}}; {{{label}}}_Ready
+{{/if}}

@@ -1,21 +1,21 @@
 ;{{{label}}}
 {{#if enableAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 OUT  {{pad enableAddr}}; {{{label}}}_Enable
 {{/if}}
 {{#if targetPos}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 DMOV {{{targetPos}}} ; {{{label}}}_TargetPos
 {{/if}}
 {{#if velocityAddr}}
-LD   {{pad ../unit.flagAuto}}; Auto
-ANB  {{pad ../unit.flagError}}; Error
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
 MOV  #100   {{pad velocityAddr}}; {{{label}}}_Velocity
 {{/if}}
 {{#if resetErrAddr}}
-LD   {{pad ../unit.flagResetPulse}}; Reset Error pulse
+LD   {{pad unit.flagResetPulse}}; Reset Error pulse
 OUT  {{pad resetErrAddr}}; {{{label}}}_ResetErr
 {{/if}}
 {{#if inPositionAddr}}

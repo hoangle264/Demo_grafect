@@ -16,26 +16,26 @@ ZRES {{{originBase}}} {{{unit.flagsResetEnd}}} ; CY1 Down
 {{#if unit.errorDMAddr}}
 {{!-- DM mode: aggregate errors via MOV, then compare against #0 --}}
 LD   CR2002           ; Always ON
-{{#each cylinders}}
-{{#if errFlagDirA}}
-MOV  {{pad errFlagDirA}}{{{../unit.errorDMAddr}}}         ; Error_{{{label}}}_{{{dirAName}}}  {{{../unit.label}}}_Error
+{{#with cylinders.[0]}}
+{{#if ErrorA}}
+MOV  {{pad ErrorA}}{{{../unit.errorDMAddr}}} 
 {{/if}}
-{{/each}}
-LD>  {{pad unit.errorDMAddr}}#0             ; {{{unit.label}}}_Error
+{{/with}}
+LD>  {{pad unit.errorDMAddr}}#0  ; {{{unit.label}}}_Error
 {{else}}
 {{!-- Flag mode: OR all cylinder error flags --}}
 {{#each cylinders}}
-{{#if errFlagDirA}}
-{{#if @first}}LD   {{else}}OR   {{/if}}{{pad errFlagDirA}}; Error_{{{label}}}_{{{dirAName}}}
+{{#if ErrorA}}
+{{#if @first}}LD   {{else}}OR   {{/if}}{{pad ErrorA}}; Error_{{{label}}}_{{{dirAName}}}
 {{/if}}
-{{#if errFlagDirB}}
-OR   {{pad errFlagDirB}}; Error_{{{label}}}_{{{dirBName}}}
+{{#if ErrorB}}
+OR   {{pad ErrorB}}; Error_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{/each}}
 {{/if}}
 {{!-- ─── Error flag + ErrStop latch ──────────────────────────────────── --}}
-SET  {{pad unit.flagError}}; Error
-LD   {{pad unit.flagError}}; Error
+SET  {{pad unit.ErrorFlag}}; Error
+LD   {{pad unit.ErrorFlag}}; Error
 SET  {{pad unit.flagErrStop}}; Operation Error Stop
 {{!-- ─── Reset sequence: btnReset → DIFU pulse → ZRES error flags ─────── --}}
 LD   {{pad unit.flagErrStop}}; Operation Error Stop
@@ -45,5 +45,5 @@ AND  {{pad unit.btnReset}}; btnReset
 {{#if unit.flagResetPulse}}
 DIFU {{pad unit.flagResetPulse}}; Reset Error
 LDP  {{pad unit.flagResetPulse}}; Reset Error
-ZRES {{{unit.flagError}}} {{{unit.flagResetEnd}}} ; Error  Reset Error
+ZRES {{{unit.ErrorFlag}}} {{{unit.flagResetEnd}}} ; Error  Reset Error
 {{/if}}

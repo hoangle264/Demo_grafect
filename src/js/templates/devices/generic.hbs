@@ -1,0 +1,11 @@
+; WARNING: Generic output renderer for {{{kind}}} device {{{label}}}
+{{#if renderWarning}}
+; {{{renderWarning}}}
+{{/if}}
+{{#if outputAddr}}
+LD   {{pad unit.flagAuto}}; Auto
+ANB  {{pad unit.flagError}}; Error
+OUT  {{pad outputAddr}}; {{{label}}}_Output
+{{else}}
+; WARNING: {{{label}}} has no outputAddr; no output emitted.
+{{/if}}

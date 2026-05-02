@@ -1,0 +1,80 @@
+{
+  "devices": [
+    {
+      "deviceId": "cylinder",
+      "name": "Cylinder",
+      "version": "1.0.0",
+      "commands": {
+        "extend": {
+          "actionLabel": "Cylinder Extend",
+          "driveSignal": "CoilA",
+          "complete": {
+            "sensor": "LSH",
+            "sensorLabel": "Cylinder High Limit"
+          }
+        },
+        "retract": {
+          "actionLabel": "Cylinder Retract",
+          "driveSignal": "CoilB",
+          "complete": {
+            "sensor": "LSL",
+            "sensorLabel": "Cylinder Low Limit"
+          }
+        }
+      }
+    },
+    {
+      "deviceId": "robot",
+      "name": "Robot",
+      "version": "1.0.0",
+      "signals": [
+        { "id": "PowerON", "name": "PowerON", "type": "Bool", "dir": "IN", "label": "Power ON" },
+        { "id": "AutoMode", "name": "AutoMode", "type": "Bool", "dir": "IN", "label": "Auto Mode" },
+        { "id": "Run", "name": "Run", "type": "Bool", "dir": "IN", "label": "Run" },
+        { "id": "Point1", "name": "Point1", "type": "Bool", "dir": "IN", "label": "Point 1" },
+        { "id": "Point2", "name": "Point2", "type": "Bool", "dir": "IN", "label": "Point 2" },
+        { "id": "Point3", "name": "Point3", "type": "Bool", "dir": "IN", "label": "Point 3" },
+        { "id": "Point4", "name": "Point4", "type": "Bool", "dir": "IN", "label": "Point 4" },
+        { "id": "Point", "name": "Point", "type": "INT", "dir": "IN", "label": "Point (INT)" }
+      ],
+      "commands": {
+        "Point1": {
+          "actionLabel": "Move to Point 1",
+          "driveSignal": "Point1",
+          "complete": {
+            "sensor": "Point",
+            "sensorLabel": "Current Point",
+            "value": "K1"
+          }
+        },
+        "Point2": {
+          "actionLabel": "Move to Point 2",
+          "driveSignal": "Point2",
+          "complete": {
+            "sensor": "Point",
+            "sensorLabel": "Current Point",
+            "value": "K2"
+          }
+        },
+        "Point3": {
+          "actionLabel": "Move to Point 3",
+          "driveSignal": "Point3",
+          "complete": {
+            "sensor": "Point",
+            "sensorLabel": "Current Point",
+            "value": "K3"
+          }
+        },
+        "Point4": {
+          "actionLabel": "Move to Point 4",
+          "driveSignal": "Point4",
+          "complete": {
+            "sensor": "Point",
+            "sensorLabel": "Current Point",
+            "value": "K4"
+          }
+        }
+      }
+    }
+  ]
+}
