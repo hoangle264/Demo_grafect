@@ -2259,7 +2259,8 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   const ctx = cgUCBuildContext(unitConfig, selectedUnitId, { addressMode });
   const pr  = profile || PLC_PROFILES['kv-5500'];
   const timestamp = new Date().toLocaleString('vi-VN');
-  const unitLabel = (ctx.unit.label || '').padEnd(39);
+  const moduleLabel = String(ctx.unit.label || '').replace(/\s+/g, '');
+  const unitLabel = moduleLabel.padEnd(39);
 
   const lines = [];
 
@@ -2267,51 +2268,10 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
   const unitIndexStr = (unitConfig.unit?.unitIndex != null)
     ? 'unitIndex=' + unitConfig.unit.unitIndex
     : 'unitIndex=auto';
-  lines.push('DEVICE:57');
-  lines.push(`;MODULE:${unitLabel}`);
+  lines.push('DEVICE:128');
+  lines.push(`;MODULE:${moduleLabel}`);
   lines.push(';MODULE_TYPE:0');
-  lines.push('; ╔══════════════════════════════════════════════════════╗');
-  lines.push(`; ║  GRAFCET Studio — Unit Config Engine  (${schemaVer.padEnd(3)})         ║`);
-  lines.push(`; ║  Unit    : ${unitLabel}║`);
-  lines.push(`; ║  Schema  : ${schemaVer.padEnd(3)}  |  ${unitIndexStr.padEnd(36)}║`);
-  lines.push(`; ║  PLC     : ${pr.label.padEnd(42)}║`);
-  lines.push(`; ║  Generated: ${timestamp.padEnd(41)}║`);
-  lines.push('; ╚══════════════════════════════════════════════════════╝');
-  lines.push('');
-
-  // v3: chèn warnings nếu có (thiếu diagram, thiếu vars, thiếu signal address)
-  if (ctx.warnings && ctx.warnings.length) {
-    lines.push('; ┌─ WARNINGS (' + ctx.warnings.length + ') ─────────────────────────────────────────');
-    ctx.warnings.forEach(function(w) {
-      lines.push('; │ ' + w);
-    });
-    lines.push('; └──────────────────────────────────────────────────────');
-    lines.push('');
-  }
-
-  lines.push('; ── UNIT STATION STRUCT DATA ──────────────────────────');
-  const unitFieldKeys = Object.keys(ctx.unit || {}).filter(function(key) { return key !== 'label'; });
-  if (unitFieldKeys.length) {
-    unitFieldKeys.forEach(function(key) {
-      lines.push('; unit.' + key + '=' + (ctx.unit[key] || ''));
-    });
-  } else {
-    lines.push('; No Unit Station Struct Data fields imported.');
-  }
-  ctx.cylinders.forEach(function(cy) {
-    lines.push('; ' + cy.id + ':  ' +
-      'outDirA(' + cy.dirAName + ')=' + (cy.outDirA||'?') +
-      '  snsA=' + (cy.sensorDirA||'?') +
-      '  outDirB(' + cy.dirBName + ')=' + (cy.outDirB||'?') +
-      '  snsB=' + (cy.sensorDirB||'?'));
-    lines.push('; ' + cy.id + ':  ' +
-      'hmiManBtn=' + cy.hmiManBtn +
-      '  sysManFlag=' + cy.sysManFlag +
-      '  errA=' + cy.errFlagDirA +
-      '  errB=' + cy.errFlagDirB);
-  });
-  lines.push('');
-
+  lines.push(`;Generated: ${timestamp.padEnd(41)}`);
   // 5 sections: dùng Handlebars templates nếu đã load, fallback sang JS generators
   if (ucTemplatesReady()) {
     const tplCtx = cgUCBuildTemplateContext(ctx);
@@ -2352,11 +2312,11 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
     lines.push(...cgUCGenerateOutput(ctx));
   }
 
-  lines.push('; ── END OF FILE ──────────────────────────────────────────');
+  lines.push(';END OF FILE');
   lines.push('END');
   lines.push('ENDH');
 
-  const rawCode = lines.join('\n');
+  const rawCode = lines.join('\r\n');
   const totalCy = ctx.cylinders.length;
   const totalFlows = ctx.stationFlows.length;
   const originCount = ctx.originSteps.length;
