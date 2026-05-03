@@ -50,23 +50,40 @@ SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
 {{!-- ─── Error timers: ONDL if output ON but feedback sensor not reached ─── --}}
 {{#if errTimerDirA}}
-LD   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+LDI {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+AND {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+INV
+AND   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}} 
 {{#if DisSnsH}}
-ANB  {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
+{{/if}}
 ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
 {{/if}}
 {{#if errTimerDirB}}
-LD   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+LDI {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+AND {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+INV
+AND   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}} 
 {{#if DisSnsL}}
-ANB  {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-{{/if}}
 ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
+{{/if}}
 ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
 {{/if}}
+{{!-- ─── state ─── --}}
+LD {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+LD {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+AND {{pad ErrorA}}; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
+LDB {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
+AND {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
+ORL
+ANL
+SET {{pad State}}; State_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+LD  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
+LD {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+AND {{pad ErrorB}}; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
+LDB {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
+AND {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
+ORL
+ANL
+RES  {{pad State}}; State_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 {{/if}}
