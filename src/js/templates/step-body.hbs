@@ -13,6 +13,10 @@ LD   {{pad addr}}; {{{actionLabel}}}
 {{#if completeValue}}
 AND= {{pad complete}} {{completeValue}}; {{{completeLabel}}}
 {{else}}
+{{#if completeNegated}}
+ANB  {{pad complete}}; {{{completeLabel}}}
+{{else}}
 AND  {{pad complete}}; {{{completeLabel}}}
+{{/if}}
 {{/if}}
 SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp

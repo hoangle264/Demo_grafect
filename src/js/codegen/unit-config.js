@@ -1107,17 +1107,21 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
       let complete = '';
       let completeLabel = '';
       let completeValue = '';
+      let completeNegated = false;
       actions.some(function(act) {
         const dev = deviceList.find(function(d) { return d && d.id === act.devLabel; });
         if (!dev) return false;
         const cmd = ucFindDeviceCommandByDrive(dev, act.sigName);
-        const completeSignal = cmd && cmd.complete && cmd.complete.sensor;
+        const completeSignalRaw = cmd && cmd.complete && cmd.complete.sensor;
+        const completeSignal = (completeSignalRaw || '').replace(/^NOT\s+/i, '');
+        const isNegated = /^NOT\s+/i.test(completeSignalRaw || '');
         if (!completeSignal) return false;
         const addr = ucResolveDeviceSignalAddress(lookupVars, act.devLabel, completeSignal);
         if (!addr) return false;
         complete = addr;
-        completeLabel = act.devLabel + '.' + completeSignal;
+        completeLabel = (isNegated ? 'NOT ' : '') + act.devLabel + '.' + completeSignal;
         completeValue = (cmd.complete && cmd.complete.value) || '';
+        completeNegated = isNegated;
         return true;
       });
       if (!complete && sensor) {
@@ -1135,6 +1139,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         complete:       complete,
         completeLabel:  completeLabel,
         completeValue:  completeValue,
+        completeNegated: completeNegated,
         extraCondition: extraCondition,
         stepIndex:      i,
         stepId:         step.id,
@@ -1443,13 +1448,16 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         const dev = allDevicesMap[act.devLabel];
         if (!dev) return false;
         const cmd = ucFindDeviceCommandByDrive(dev, act.sigName);
-        const completeSignal = cmd && cmd.complete && cmd.complete.sensor;
+        const completeSignalRaw = cmd && cmd.complete && cmd.complete.sensor;
+        const completeSignal = (completeSignalRaw || '').replace(/^NOT\s+/i, '');
+        const isNegated = /^NOT\s+/i.test(completeSignalRaw || '');
         if (!completeSignal) return false;
         const addr = ucResolveDeviceSignalAddress(allVarsGlobal, act.devLabel, completeSignal);
         if (!addr) return false;
         step.complete = addr;
-        step.completeLabel = act.devLabel + '.' + completeSignal;
+        step.completeLabel = (isNegated ? 'NOT ' : '') + act.devLabel + '.' + completeSignal;
         step.completeValue = (cmd.complete && cmd.complete.value) || '';
+        step.completeNegated = isNegated;
         return true;
       });
       if (!step.complete && step.sensor) {
@@ -2132,6 +2140,7 @@ function cgUCBuildTemplateContext(ctx) {
       prevActionLabel: step.prevActionLabel || '',
       complete:        step.complete        || '',
       completeLabel:   step.completeLabel   || '',
+      completeNegated: !!step.completeNegated,
     });
   });
   const lastOriginStep = originSteps.length > 0
@@ -2149,6 +2158,7 @@ function cgUCBuildTemplateContext(ctx) {
         prevActionLabel: step.prevActionLabel || '',
         complete:        step.complete        || '',
         completeLabel:   step.completeLabel   || '',
+        completeNegated: !!step.completeNegated,
       });
     });
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
