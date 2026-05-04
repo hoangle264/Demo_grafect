@@ -304,7 +304,11 @@ const UC_PARTIAL_BUNDLE = {
 {{#if completeValue}}
 AND= {{pad complete}} {{completeValue}}; {{{completeLabel}}}
 {{else}}
+{{#if completeNegated}}
+ANB  {{pad complete}}; {{{completeLabel}}}
+{{else}}
 AND  {{pad complete}}; {{{completeLabel}}}
+{{/if}}
 {{/if}}
 OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
