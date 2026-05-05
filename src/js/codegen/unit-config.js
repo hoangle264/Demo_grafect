@@ -558,7 +558,7 @@ function ucNormalizeAddressMode(mode) {
   const m = String(mode || '').trim().toLowerCase();
   if (m === 'block') return 'block';
   if (m === 'line' || m === 'linear') return 'linear';
-  return 'linear';
+  return 'block';
 }
 // ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
 // VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
