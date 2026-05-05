@@ -554,12 +554,21 @@ function ucParseBase(baseStr) {
 function ucMRAddr(baseNum, offset) {
   return '@MR' + String(baseNum + offset).padStart(3, '0');
 }
+function ucNormalizeAddressMode(mode) {
+  const m = String(mode || '').trim().toLowerCase();
+  if (m === 'block') return 'block';
+  if (m === 'line' || m === 'linear') return 'linear';
+  return 'block';
+}
 // ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
 // VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
 function ucMRAddrBlockWord(baseNum, wordOffset) {
-  const blockIndex = Math.floor(wordOffset / 16);
-  const posInBlock = wordOffset % 16;
-  const num = baseNum + blockIndex * 100 + posInBlock;
+  const baseHundreds = Math.floor(baseNum / 100) * 100;
+  const basePos = ((baseNum % 100) + 100) % 100;
+  const totalPos = basePos + Math.max(0, wordOffset);
+  const blockIndex = Math.floor(totalPos / 16);
+  const posInBlock = totalPos % 16;
+  const num = baseHundreds + blockIndex * 100 + posInBlock;
   return '@MR' + String(num).padStart(3, '0');
 }
 function ucMRAddrBlock(baseNum, stepIndex) {
@@ -910,7 +919,7 @@ function ucFindCylinderCommandByDrive(cy, driveSignal) {
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
 function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
-  const addressMode = (options && options.addressMode) || 'linear'; // 'linear' | 'block'
+  const addressMode = ucNormalizeAddressMode(options && options.addressMode); // 'linear' | 'block'
   const unitNameMismatchWarning = ucGetUnitNameMismatchWarning(selectedUnitId, u && u.label);
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
@@ -1503,8 +1512,9 @@ function ucPad(addr) { return String(addr).padEnd(12); }
 function ucResetEndAddr(baseNum, stepCount, addressMode) {
   if (addressMode === 'block') {
     const endPulseWordOffset = Math.max(0, stepCount * 2);
-    const endPulseBlockIndex = Math.floor(endPulseWordOffset / 16);
-    const num = baseNum + endPulseBlockIndex * 100 + 15;
+    const endAddr = ucMRAddrBlockWord(baseNum, endPulseWordOffset);
+    const endNum = ucParseBase(endAddr);
+    const num = Math.floor(endNum / 100) * 100 + 15;
     return '@MR' + String(num).padStart(3, '0');
   }
   const num = baseNum + Math.max(15, stepCount * 2 + 6);
@@ -2253,7 +2263,7 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
     return { code: '; ERROR: unitConfig chưa được load.', stats: 'Error' };
   }
   const strictTemplates = !!(options && options.strictTemplates);
-  const addressMode     = (options && options.addressMode) || 'linear';
+  const addressMode     = ucNormalizeAddressMode(options && options.addressMode);
   const requireUnitBindings = options ? options.requireUnitBindings !== false : true;
 
   if (requireUnitBindings && !ucGetUnitStationVars().length) {

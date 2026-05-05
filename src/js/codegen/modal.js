@@ -122,7 +122,7 @@ function showGenerateCodeModal() {
               font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 6px;
               border-radius:3px;outline:none;">
               <option value="linear">Linear — MR100, MR102, MR104…</option>
-              <option value="block">Block — MR100…MR115, MR200…MR215…</option>
+              <option value="block" selected>Block — MR100…MR115, MR200…MR215…</option>
             </select>
           </label>
         </div>
@@ -459,7 +459,7 @@ function cgUpdatePreview() {
       return;
     }
     const profile  = PLC_PROFILES['kv-5500'];
-    const addrMode = document.getElementById('uc-addr-mode')?.value || 'linear';
+    const addrMode = document.getElementById('uc-addr-mode')?.value || 'block';
     try {
       const result  = cgGenerateFromUnitConfig(effectiveConfig, null, profile, selectedUnitId, {
         strictTemplates: true,
@@ -629,7 +629,7 @@ function cgDownloadCode() {
     }
     if (!cgUCEnsureTemplateHealth('download code')) return;
     const profile  = PLC_PROFILES['kv-5500'];
-    const addrMode = document.getElementById('uc-addr-mode')?.value || 'linear';
+    const addrMode = document.getElementById('uc-addr-mode')?.value || 'block';
     const result  = cgGenerateFromUnitConfig(effectiveConfig, null, profile, selectedUnitId, {
       strictTemplates: true,
       addressMode: addrMode,
