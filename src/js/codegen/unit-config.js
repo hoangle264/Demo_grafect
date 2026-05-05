@@ -300,7 +300,7 @@ function ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals) {
   const vt  = varTableSignals || {};
   return {
     hmiManBtn:   vt['HmiManBtn'] || cylDef.hmiManBtn   || ucMkMRPlain(UC_HMI_MAN_BASE + idx),
-    sysManFlag:  cylDef.sysManFlag  || ucMkMRPlain(UC_SYS_MAN_BASE + idx),
+    sysManFlag:  vt['sysManFlag'] || vt['SysManFlag'] || vt['sysmanflag'] || cylDef.sysManFlag || ucMkMRPlain(UC_SYS_MAN_BASE + idx),
     lockDirA:    vt['LockA']    || cylDef.lockDirA    || ucMkMRPlain(UC_LOCK_BASE + idx * 2),
     lockDirB:    vt['LockB']    || cylDef.lockDirB    || ucMkMRPlain(UC_LOCK_BASE + idx * 2 + 1),
     errFlagDirA: vt['ErrorA']   || cylDef.errFlagDirA || ucMkMRPlain(UC_ERR_BASE  + idx * 2),
