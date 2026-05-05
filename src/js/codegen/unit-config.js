@@ -556,18 +556,19 @@ function ucMRAddr(baseNum, offset) {
 }
 // ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
 // VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
-function ucMRAddrBlock(baseNum, stepIndex) {
-  const blockIndex  = Math.floor(stepIndex / 8);
-  const posInBlock  = stepIndex % 8;
-  const num = baseNum + blockIndex * 100 + posInBlock * 2;
+function ucMRAddrBlockWord(baseNum, wordOffset) {
+  const blockIndex = Math.floor(wordOffset / 16);
+  const posInBlock = wordOffset % 16;
+  const num = baseNum + blockIndex * 100 + posInBlock;
   return '@MR' + String(num).padStart(3, '0');
+}
+function ucMRAddrBlock(baseNum, stepIndex) {
+  return ucMRAddrBlockWord(baseNum, stepIndex * 2);
 }
 function ucMRAddrBlockCmp(baseNum, stepIndex) {
-  const blockIndex  = Math.floor(stepIndex / 8);
-  const posInBlock  = stepIndex % 8;
-  const num = baseNum + blockIndex * 100 + posInBlock * 2 + 1;
-  return '@MR' + String(num).padStart(3, '0');
+  return ucMRAddrBlockWord(baseNum, stepIndex * 2 + 1);
 }
+
 
 // ─── Lấy tên hướng từ sigName (VD: 'Up_SOL' → 'Up', 'CoilA' → 'CoilA') ─────
 function ucDirFromSigName(sigName) {
@@ -1187,9 +1188,15 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
     const seqData = loadSeq(diag);
     // Mỗi station có baseNum riêng — dùng autoBaseAddr + fi*32 (tránh overlap)
     // Tuy nhiên trong thực tế project thường chỉ có 1 station → fi=0 → autoBaseNum
-    const baseNum = autoBaseNum + fi * 32;
+    const baseNum = addressMode === 'block'
+      ? ucParseBase(ucMRAddrBlockWord(autoBaseNum, fi * 32))
+      : (autoBaseNum + fi * 32);
     const steps   = buildComputedSteps(seqData, baseNum);
-    const endPulseAddr = u.autoEndPulseAddr || ucMRAddr(baseNum, steps.length * 2);
+    const endPulseAddr = (addressMode === 'linear' && u.autoEndPulseAddr)
+      ? u.autoEndPulseAddr
+      : (addressMode === 'block'
+        ? ucMRAddrBlockWord(baseNum, steps.length * 2)
+        : ucMRAddr(baseNum, steps.length * 2));
     return {
       label:        diag.name || ('Station ' + (fi + 1)),
       baseNum:      baseNum,
@@ -1499,8 +1506,9 @@ function ucPad(addr) { return String(addr).padEnd(12); }
 // block : cuối block chứa step cuối = baseNum + blockIndex*100 + 15
 function ucResetEndAddr(baseNum, stepCount, addressMode) {
   if (addressMode === 'block') {
-    const lastBlockIndex = Math.floor((stepCount - 1) / 8);
-    const num = baseNum + lastBlockIndex * 100 + 15;
+    const endPulseWordOffset = Math.max(0, stepCount * 2);
+    const endPulseBlockIndex = Math.floor(endPulseWordOffset / 16);
+    const num = baseNum + endPulseBlockIndex * 100 + 15;
     return '@MR' + String(num).padStart(3, '0');
   }
   const num = baseNum + Math.max(15, stepCount * 2 + 6);
