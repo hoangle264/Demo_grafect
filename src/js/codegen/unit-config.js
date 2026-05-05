@@ -563,9 +563,12 @@ function ucNormalizeAddressMode(mode) {
 // ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
 // VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
 function ucMRAddrBlockWord(baseNum, wordOffset) {
-  const blockIndex = Math.floor(wordOffset / 16);
-  const posInBlock = wordOffset % 16;
-  const num = baseNum + blockIndex * 100 + posInBlock;
+  const baseHundreds = Math.floor(baseNum / 100) * 100;
+  const basePos = ((baseNum % 100) + 100) % 100;
+  const totalPos = basePos + Math.max(0, wordOffset);
+  const blockIndex = Math.floor(totalPos / 16);
+  const posInBlock = totalPos % 16;
+  const num = baseHundreds + blockIndex * 100 + posInBlock;
   return '@MR' + String(num).padStart(3, '0');
 }
 function ucMRAddrBlock(baseNum, stepIndex) {
@@ -1509,8 +1512,9 @@ function ucPad(addr) { return String(addr).padEnd(12); }
 function ucResetEndAddr(baseNum, stepCount, addressMode) {
   if (addressMode === 'block') {
     const endPulseWordOffset = Math.max(0, stepCount * 2);
-    const endPulseBlockIndex = Math.floor(endPulseWordOffset / 16);
-    const num = baseNum + endPulseBlockIndex * 100 + 15;
+    const endAddr = ucMRAddrBlockWord(baseNum, endPulseWordOffset);
+    const endNum = ucParseBase(endAddr);
+    const num = Math.floor(endNum / 100) * 100 + 15;
     return '@MR' + String(num).padStart(3, '0');
   }
   const num = baseNum + Math.max(15, stepCount * 2 + 6);
