@@ -554,6 +554,12 @@ function ucParseBase(baseStr) {
 function ucMRAddr(baseNum, offset) {
   return '@MR' + String(baseNum + offset).padStart(3, '0');
 }
+function ucNormalizeAddressMode(mode) {
+  const m = String(mode || '').trim().toLowerCase();
+  if (m === 'block') return 'block';
+  if (m === 'line' || m === 'linear') return 'linear';
+  return 'linear';
+}
 // ─── Tính địa chỉ MR dạng block: mỗi block 16 địa chỉ (8 step pairs), nhảy +100 ─
 // VD: baseNum=100, stepIndex=0→@MR100/101, stepIndex=8→@MR200/201, ...
 function ucMRAddrBlockWord(baseNum, wordOffset) {
@@ -910,7 +916,7 @@ function ucFindCylinderCommandByDrive(cy, driveSignal) {
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
 function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
-  const addressMode = (options && options.addressMode) || 'linear'; // 'linear' | 'block'
+  const addressMode = ucNormalizeAddressMode(options && options.addressMode); // 'linear' | 'block'
   const unitNameMismatchWarning = ucGetUnitNameMismatchWarning(selectedUnitId, u && u.label);
 
   // ── v3: resolve flags và IO qua resolver functions ────────────────────────
@@ -2253,7 +2259,7 @@ function cgGenerateFromUnitConfig(unitConfig, _cylinderTypes, profile, selectedU
     return { code: '; ERROR: unitConfig chưa được load.', stats: 'Error' };
   }
   const strictTemplates = !!(options && options.strictTemplates);
-  const addressMode     = (options && options.addressMode) || 'linear';
+  const addressMode     = ucNormalizeAddressMode(options && options.addressMode);
   const requireUnitBindings = options ? options.requireUnitBindings !== false : true;
 
   if (requireUnitBindings && !ucGetUnitStationVars().length) {
