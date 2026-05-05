@@ -1186,13 +1186,16 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
 
   const stationFlows = stationDiags.map(function(diag, fi) {
     const seqData = loadSeq(diag);
-    // Mỗi station có baseNum riêng — dùng autoBaseAddr + fi*32 (tránh overlap)
-    // Tuy nhiên trong thực tế project thường chỉ có 1 station → fi=0 → autoBaseNum
-    const baseNum = autoBaseNum + fi * 32;
+    // Mỗi station có baseNum riêng:
+    // - linear mode: cộng tuyến tính theo dải 32 word để tránh overlap.
+    // - block mode : map theo block, mỗi station nhảy +100 để tách block rõ ràng.
+    const baseNum = addressMode === 'block'
+      ? (autoBaseNum + fi * 100)
+      : (autoBaseNum + fi * 32);
     const steps   = buildComputedSteps(seqData, baseNum);
-    const endPulseAddr = u.autoEndPulseAddr || (addressMode === 'block'
+    const endPulseAddr = addressMode === 'block'
       ? ucMRAddrBlockWord(baseNum, steps.length * 2)
-      : ucMRAddr(baseNum, steps.length * 2));
+      : (u.autoEndPulseAddr || ucMRAddr(baseNum, steps.length * 2));
     return {
       label:        diag.name || ('Station ' + (fi + 1)),
       baseNum:      baseNum,
