@@ -528,7 +528,7 @@ Quy tắc resolve output partial:
    - `device_generic`
 5. Device output partial nên ưu tiên đọc tín hiệu qua `signalsByName` (map theo `signal.name`). `signalAddresses` chỉ nên coi là raw map theo `sig.id` để tương thích ngược.
 6. `devicesByKind` được thêm vào template context để các template có thể group theo loại device.
-7. `cylinders` và legacy `output.hbs` vẫn được giữ để tương thích, nhưng device/admin addresses không được tự sinh; template chỉ nhận địa chỉ người dùng import/cấu hình.
+7. `cylinders` chỉ còn là alias tương thích ngược của `devicesByKind.cylinder`; device/admin addresses không được tự sinh và mọi thiết bị đi qua `devices`/`signalsByName`.
 
 Với device mới, có hai cách hỗ trợ output:
 
