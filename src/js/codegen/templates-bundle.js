@@ -314,73 +314,20 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
 
   // ── src/templates/devices/cylinder.hbs ───────────────────────────────────
-  device_cylinder: `{{#if hasOutput}}
-;{{{label}}}
-{{#if hasDirAOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
-LD   {{pad unit.flagManual}}; Manual
-ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockA}}
-ANB  {{pad LockA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+  device_cylinder: `;{{{label}}}
+{{#each commandList}}
+{{#if driveSignal}}
+{{#with (lookup ../signalsByName driveSignal) as |driveAddr|}}
+{{#if driveAddr}}
+LD   {{pad ../../unit.flagAuto}}; Auto
+ANB  {{pad ../../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../../label}}}_{{{../name}}}
 {{/if}}
-SET  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if CoilB}}
-CON
-RES  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{/if}}
-{{#if hasDirBOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-{{#if singleStepDirB}}
-LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
-ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
-{{else}}
-{{#each enrichedStepsDirB}}
-LD   {{pad addr}}; {{{sLabel}}}
-ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
-{{#if needsORL}}
-ORL
+{{/with}}
 {{/if}}
 {{/each}}
-{{/if}}
-ANL
-LD   {{pad unit.flagManual}}; Manual
-ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockB}}
-ANB  {{pad LockB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
-{{/if}}
-{{#if CoilA}}
-RES  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-CON
-{{/if}}
-SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{#if errTimerDirA}}
-LD   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-{{#if DisSnsH}}
-ANB  {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-{{/if}}
-ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
-{{/if}}
-{{#if errTimerDirB}}
-LD   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-{{#if DisSnsL}}
-ANB  {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-{{/if}}
-ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
-{{/if}}
-{{/if}}
 `,
+
 
   // ── src/templates/devices/motor.hbs ──────────────────────────────────────
   device_motor: `;{{{label}}}

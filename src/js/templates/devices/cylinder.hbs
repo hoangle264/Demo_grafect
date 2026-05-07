@@ -1,89 +1,15 @@
 {{!-- ╔══════════════════════════════════════════════════════════╗ --}}
-{{!-- ║  device_cylinder — Output + error timer for one cylinder ║ --}}
+{{!-- ║  device_cylinder — generic command renderer              ║ --}}
 {{!-- ╚══════════════════════════════════════════════════════════╝ --}}
-{{#if hasOutput}}
 ;{{{label}}}
-{{!-- ─── DirA output: Auto (step active & not-cmp) OR Manual sysManFlag ── --}}
-{{#if hasDirAOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
-LD   {{pad unit.flagManual}}; Manual
-ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockA}}
-ANB  {{pad LockA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
+{{#each commandList}}
+{{#if driveSignal}}
+{{#with (lookup ../signalsByName driveSignal) as |driveAddr|}}
+{{#if driveAddr}}
+LD   {{pad ../../unit.flagAuto}}; Auto
+ANB  {{pad ../../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../../label}}}_{{{../name}}}
 {{/if}}
-SET  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if CoilB}}
-CON
-RES  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{/if}}
-{{!-- ─── DirB output: Auto (step active & not-cmp, ORL for multi-step) ──── --}}
-{{#if hasDirBOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-{{#if singleStepDirB}}
-LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
-ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
-{{else}}
-{{#each enrichedStepsDirB}}
-LD   {{pad addr}}; {{{sLabel}}}
-ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
-{{#if needsORL}}
-ORL
+{{/with}}
 {{/if}}
 {{/each}}
-{{/if}}
-ANL
-LD   {{pad unit.flagManual}}; Manual
-ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockB}}
-ANB  {{pad LockB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
-{{/if}}
-{{#if CoilA}}
-RES  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-CON
-{{/if}}
-SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{!-- ─── Error timers: ONDL if output ON but feedback sensor not reached ─── --}}
-{{#if errTimerDirA}}
-LDB {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-AND {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-INV
-AND   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}} 
-{{#if DisSnsH}}
-ANB  {{pad unit.flagManual}}; Manual
-{{/if}}
-ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
-{{/if}}
-{{#if errTimerDirB}}
-LDB {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-AND {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-INV
-AND   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}} 
-{{#if DisSnsL}}
-ANB  {{pad unit.flagManual}}; Manual
-{{/if}}
-ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
-{{/if}}
-{{!-- ─── state ─── --}}
-LD {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-LD {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-AND {{pad ErrorA}}; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
-LDB {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-AND {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-ORL
-ANL
-SET {{pad State}}; State_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-LD  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-LD {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-AND {{pad ErrorB}}; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
-LDB {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-AND {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-ORL
-ANL
-RES  {{pad State}}; State_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
