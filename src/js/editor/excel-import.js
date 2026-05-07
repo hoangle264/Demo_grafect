@@ -130,7 +130,7 @@ function eiParseCylinderCSV(rows) {
       cyl_errB:    cols[9]  || '',
       cyl_coilA:   cols[10] || '',
       cyl_coilB:   cols[11] || '',
-      cyl_hmiMan:  '',       // không có trong CSV — tính theo index
+      cyl_hmiMan:  '',       // không có trong CSV — không tự sinh địa chỉ
     };
 
     // Nếu Struct Data "Cylinder" đang dùng signal IDs khác canonical cyl_*
@@ -416,11 +416,6 @@ function eiImportFromCSVText(csvText, csvType, options) {
   const detectedType = csvType || 'struct';
 
   if (detectedType === 'cylinder') {
-    // Đảm bảo device type Cylinder đã tồn tại
-    if (typeof ucEnsureCylinderDeviceType === 'function') {
-      ucEnsureCylinderDeviceType();
-    }
-
     const { vars, errors } = eiParseCylinderCSV(rows);
     if (errors.length) {
       return { ok: false, message: 'Lỗi validate:\n' + errors.join('\n'), added: 0 };

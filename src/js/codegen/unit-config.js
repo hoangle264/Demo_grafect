@@ -132,28 +132,16 @@ function ucBuildUnitStructContext(selectedUnitId) {
   return unit;
 }
 
-/**
- * Admin addresses per cylinder — tính theo index thiết bị:
- *   hmiManBtn  = MR(HMI_MAN_BASE  + deviceIndex)
- *   sysManFlag = MR(SYS_MAN_BASE  + deviceIndex)
- *   lockDirA   = MR(LOCK_BASE     + deviceIndex*2 + 0)
- *   lockDirB   = MR(LOCK_BASE     + deviceIndex*2 + 1)
- *   errFlagDirA= MR(ERR_BASE      + deviceIndex*2 + 0)
- *   errFlagDirB= MR(ERR_BASE      + deviceIndex*2 + 1)
- */
-const UC_HMI_MAN_BASE = 1400;  // MR1400, MR1401, … per cylinder
-const UC_SYS_MAN_BASE = 1500;  // MR1500, MR1501, …
-const UC_LOCK_BASE    = 1200;  // MR1200/1201 CY1, MR1202/1203 CY2, …
-const UC_ERR_BASE     = 1600;  // MR1600/1601 CY1, MR1602/1603 CY2, …
+/** Device output/error timeout fallback. Device addresses are never synthesized. */
 const UC_ERR_TIMEOUT  = 500;   // ms mặc định cho ONDL timer
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  EXCEL-DRIVEN DEVICE TYPE — ucEnsureCylinderDeviceType()
-//  Đảm bảo project.devices có device type "Cylinder" chuẩn 12-signal.
-//  Gọi khi import Excel hoặc khi build context.
+//  LEGACY CYLINDER SIGNAL IDS
+//  Kept only to map old Cylinder CSV/import keys to signal names. The app no
+//  longer auto-creates or mutates device Struct Data types for any device kind.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Định nghĩa chuẩn 12-signal cho Cylinder device type (v1.0). */
+/** Canonical legacy signal ids used by the fixed-column Cylinder CSV importer. */
 const UC_CYLINDER_DEVICE_DEF = {
   name: 'Cylinder',
   signals: [
@@ -171,42 +159,6 @@ const UC_CYLINDER_DEVICE_DEF = {
     { id: 'cyl_hmiMan',  name: 'HmiManBtn',dataType: 'Bool', varType: 'Var',    comment: 'HMI manual button' },
   ]
 };
-
-/**
- * Đảm bảo project.devices có device type "Cylinder" chuẩn 12-signal.
- * Nếu chưa có → thêm. Nếu đã có nhưng thiếu signal → bổ sung.
- * Trả về device type object.
- */
-function ucEnsureCylinderDeviceType() {
-  if (typeof project === 'undefined') return UC_CYLINDER_DEVICE_DEF;
-  if (!project.devices) project.devices = [];
-  let dt = project.devices.find(function(d) { return d.name === 'Cylinder'; });
-  if (!dt) {
-    dt = Object.assign({ id: 'devtype-cylinder' }, UC_CYLINDER_DEVICE_DEF);
-    project.devices.push(dt);
-    if (typeof saveProject === 'function') saveProject();
-  } else {
-    // Normalize signal IDs: nếu signal đã có nhưng ID không phải cyl_*, match theo name và cập nhật ID
-    // rồi bổ sung signal còn thiếu (backward compat nếu đã có Cylinder cũ)
-    if (!dt.signals) dt.signals = [];
-    UC_CYLINDER_DEVICE_DEF.signals.forEach(function(defSig) {
-      var byId = dt.signals.find(function(s) { return s.id === defSig.id; });
-      if (!byId) {
-        // Tìm theo tên (case-insensitive) để normalize ID → cyl_*
-        var byName = dt.signals.find(function(s) {
-          return s.name.toLowerCase() === defSig.name.toLowerCase();
-        });
-        if (byName) {
-          byName.id = defSig.id; // cập nhật ID sang canonical cyl_*
-        } else {
-          dt.signals.push(Object.assign({}, defSig));
-        }
-      }
-    });
-    if (typeof saveProject === 'function') saveProject();
-  }
-  return dt;
-}
 
 // ─── Helper: tạo địa chỉ MR dạng @MRxxx ─────────────────────────────────────
 function ucMkMR(num) {
@@ -284,29 +236,27 @@ function ucResolveUnitIO(unitCfg) {
 
 /**
  * ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals)
- * Tính hmiManBtn, sysManFlag, lockDirA/B, errFlagDirA/B, disSnsA/B cho một cylinder.
- * Ưu tiên: varTable signals (từ Excel) > cylDef props (v2 compat) > tự tính theo index.
+ * Resolve cylinder admin addresses from user-provided data only.
  *
- * deviceIndex lấy từ cylDef.index (v3) hoặc vị trí trong mảng (v2).
- * Caller phải truyền index nếu dùng v2.
+ * The shared Struct Data flow must not invent PLC addresses. This helper exists
+ * only for legacy cylinder template property names; each value comes from
+ * imported Struct Data/CSV signals or explicit device config props.
  *
  * @param {Object} cylDef          — phần tử trong devices[] hoặc cylinders[]
- * @param {number} devIndex        — thứ tự trong danh sách (0-based)
+ * @param {number} devIndex        — unused; retained for backward-compatible signature
  * @param {Object} [varTableSignals] — kết quả từ ucScanSignalsFromVars (có thể undefined)
  * @returns {Object}
  */
 function ucResolveCylinderAdminAddrs(cylDef, devIndex, varTableSignals) {
-  const idx = (cylDef.index != null) ? cylDef.index : devIndex;
   const vt  = varTableSignals || {};
   return {
-    hmiManBtn:   vt['HmiManBtn'] || cylDef.hmiManBtn   || ucMkMRPlain(UC_HMI_MAN_BASE + idx),
-    sysManFlag:  vt['sysManFlag'] || vt['SysManFlag'] || vt['sysmanflag'] || cylDef.sysManFlag || ucMkMRPlain(UC_SYS_MAN_BASE + idx),
-    lockDirA:    vt['LockA']    || cylDef.lockDirA    || ucMkMRPlain(UC_LOCK_BASE + idx * 2),
-    lockDirB:    vt['LockB']    || cylDef.lockDirB    || ucMkMRPlain(UC_LOCK_BASE + idx * 2 + 1),
-    errFlagDirA: vt['ErrorA']   || cylDef.errFlagDirA || ucMkMRPlain(UC_ERR_BASE  + idx * 2),
-    errFlagDirB: vt['ErrorB']   || cylDef.errFlagDirB || ucMkMRPlain(UC_ERR_BASE  + idx * 2 + 1),
+    hmiManBtn:   vt['HmiManBtn'] || cylDef.hmiManBtn   || '',
+    sysManFlag:  vt['sysManFlag'] || vt['SysManFlag'] || vt['sysmanflag'] || cylDef.sysManFlag || '',
+    lockDirA:    vt['LockA']    || cylDef.lockDirA    || '',
+    lockDirB:    vt['LockB']    || cylDef.lockDirB    || '',
+    errFlagDirA: vt['ErrorA']   || cylDef.errFlagDirA || '',
+    errFlagDirB: vt['ErrorB']   || cylDef.errFlagDirB || '',
     errorTimeout:cylDef.errorTimeout || UC_ERR_TIMEOUT,
-    // Bypass sensor flags (chỉ có khi import Excel → Cylinder device type)
     disSnsA:     vt['DisSnsH']  || cylDef.disSnsA     || '',
     disSnsB:     vt['DisSnsL']  || cylDef.disSnsB     || '',
   };
@@ -814,30 +764,9 @@ function ucResolveDeviceSignalAddress(lookupVars, deviceId, signalName) {
   return v.signalAddresses[signalName] || '';
 }
 
-function ucGetCylinderCommands(cy) {
-  const commands = Object.assign(
-    {},
-    ucGetDeviceLibraryCommands(cy, 'cylinder'),
-    (cy && cy.commands) || {}
-  );
-  return {
-    extend: Object.assign({
-      actionLabel: 'Cylinder Extend',
-      driveSignal: 'CoilA',
-      complete: { sensor: 'LSH', sensorLabel: 'Cylinder High Limit' }
-    }, commands.extend || {}),
-    retract: Object.assign({
-      actionLabel: 'Cylinder Retract',
-      driveSignal: 'CoilB',
-      complete: { sensor: 'LSL', sensorLabel: 'Cylinder Low Limit' }
-    }, commands.retract || {})
-  };
-}
-
 function ucGetDeviceCommands(dev) {
   const d = dev || {};
   const kind = ucNormalizeDeviceKind(d.kind || d.rawKind || d.format || 'generic');
-  if (kind === 'cylinder') return ucGetCylinderCommands(d);
   return Object.assign({}, ucGetDeviceLibraryCommands(d, kind), d.commands || {});
 }
 
@@ -915,7 +844,7 @@ function ucFindCylinderCommandByDrive(cy, driveSignal) {
 //  v3 changes:
 //  - Flags và IO tính qua ucResolveUnitFlags / ucResolveUnitIO (không hardcode).
 //  - devices[] chuẩn hóa qua ucNormalizeDeviceList (tương thích v2 cylinders[]).
-//  - Admin addresses (hmiManBtn, lock, err…) tính qua ucResolveCylinderAdminAddrs.
+//  - Device/admin addresses are read from Struct Data/CSV or explicit config only.
 //  - Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
 function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   const u      = unitConfig.unit;
@@ -1213,7 +1142,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
 
   // ── Xây dựng cylinder context từ unitConfig + thông tin từ diagrams ──────
   // v3: dùng ucNormalizeDeviceList (hỗ trợ cả v2 cylinders[] và v3 devices[]).
-  // Admin addresses tính qua ucResolveCylinderAdminAddrs.
+  // Device/admin addresses are never auto-generated; read from Struct Data/CSV or explicit config only.
   // Signals (_SOL, _SNS) quét từ Variable Table qua ucScanSignalsFromVars.
 
   // Gom tất cả computed steps từ mọi flow
@@ -1394,14 +1323,13 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         });
       });
 
-      // ── v3: Admin addresses từ ucResolveCylinderAdminAddrs ───────────────
-      // v1 Excel: truyền varTableSignals để ưu tiên địa chỉ từ Excel
+      // ── Legacy cylinder aliases from user-provided Struct Data/config ───────
       const adminAddrs = ucResolveCylinderAdminAddrs(cy, listIndex, varTableSignals);
 
       return {
         id:           cy.id,
         label:        cy.label || cy.id,
-        // Admin addresses (v3: tự tính theo index nếu không override)
+        // Admin addresses: only user-provided Struct Data/CSV or explicit config
         hmiManBtn:    adminAddrs.hmiManBtn,
         HmiManBtn:    adminAddrs.hmiManBtn,
         sysManFlag:   adminAddrs.sysManFlag,
