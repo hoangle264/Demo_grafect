@@ -776,6 +776,10 @@ function ucBuildDeviceOutputBindings(device, allComputedSteps) {
         needsORL: idx > 0
       };
     });
+    const originSteps = activeSteps.filter(function(step) { return step.flowMode === 'origin'; })
+      .map(function(step, idx) { return Object.assign({}, step, { isFirst: idx === 0, needsORL: idx > 0 }); });
+    const autoSteps = activeSteps.filter(function(step) { return step.flowMode !== 'origin'; })
+      .map(function(step, idx) { return Object.assign({}, step, { isFirst: idx === 0, needsORL: idx > 0 }); });
 
     return Object.assign({}, cmd, {
       commandName: cmd.name || '',
@@ -788,9 +792,18 @@ function ucBuildDeviceOutputBindings(device, allComputedSteps) {
       completeValue: cmd.complete && cmd.complete.value || '',
       completeNegated: completeNegated,
       activeSteps: activeSteps,
+      originSteps: originSteps,
+      autoSteps: autoSteps,
       hasActiveSteps: activeSteps.length > 0,
+      hasOriginSteps: originSteps.length > 0,
+      hasAutoSteps: autoSteps.length > 0,
       singleStep: activeSteps.length === 1,
-      multiStep: activeSteps.length > 1
+      multiStep: activeSteps.length > 1,
+      originSingleStep: originSteps.length === 1,
+      originMultiStep: originSteps.length > 1,
+      autoSingleStep: autoSteps.length === 1,
+      autoMultiStep: autoSteps.length > 1,
+      needsAutoGroupORL: originSteps.length > 0 && autoSteps.length > 0
     });
   }).filter(function(binding) {
     return binding.driveSignal && binding.driveAddr;
@@ -1134,14 +1147,21 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
   }
 
   const originSeqData = loadSeq(originDiag);
-  const originSteps   = buildComputedSteps(originSeqData, originBaseNum);
+  const originSteps   = buildComputedSteps(originSeqData, originBaseNum).map(function(step) {
+    return Object.assign({}, step, { flowMode: 'origin', flowLabel: 'Origin' });
+  });
 
   const stationFlows = stationDiags.map(function(diag, fi) {
     const seqData = loadSeq(diag);
     // Mỗi station có baseNum riêng — dùng autoBaseAddr + fi*32 (tránh overlap)
     // Tuy nhiên trong thực tế project thường chỉ có 1 station → fi=0 → autoBaseNum
     const baseNum = autoBaseNum + fi * 32;
-    const steps   = buildComputedSteps(seqData, baseNum);
+    const steps   = buildComputedSteps(seqData, baseNum).map(function(step) {
+      return Object.assign({}, step, {
+        flowMode: 'auto',
+        flowLabel: diag.name || ('Station ' + (fi + 1))
+      });
+    });
     const endPulseAddr = u.autoEndPulseAddr || (addressMode === 'block'
       ? ucMRAddrBlockWord(baseNum, steps.length * 2)
       : ucMRAddr(baseNum, steps.length * 2));
@@ -1809,6 +1829,33 @@ function ucComputeActionLabel(step) {
     : (step.label || '');
 }
 
+function ucFirstDeviceValue(dev, names) {
+  const sources = [dev || {}, (dev && dev.signalsByName) || {}, (dev && dev.signalAddresses) || {}];
+  const keys = (names || []).map(function(name) { return String(name || '').toLowerCase(); });
+  for (let s = 0; s < sources.length; s += 1) {
+    const src = sources[s];
+    const srcKeys = Object.keys(src);
+    for (let i = 0; i < srcKeys.length; i += 1) {
+      if (keys.includes(srcKeys[i].toLowerCase()) && src[srcKeys[i]]) return src[srcKeys[i]];
+    }
+  }
+  return '';
+}
+
+function ucEnrichCylinderManualAliases(cy) {
+  const result = Object.assign({}, cy || {});
+  result.CoilA = result.CoilA || ucFirstDeviceValue(result, ['CoilA', 'outDirA', 'DirA', 'Extend', 'Extend_SOL']);
+  result.CoilB = result.CoilB || ucFirstDeviceValue(result, ['CoilB', 'outDirB', 'DirB', 'Retract', 'Retract_SOL']);
+  result.HmiManBtn = result.HmiManBtn || ucFirstDeviceValue(result, ['HmiManBtn', 'HmiMan', 'HmiManualBtn', 'ManualBtn']);
+  result.sysManFlag = result.sysManFlag || ucFirstDeviceValue(result, ['sysManFlag', 'SysManFlag', 'ManualFlag', 'ManFlag']);
+  result.dirAName = result.dirAName || 'CoilA';
+  result.dirBName = result.dirBName || 'CoilB';
+  result.hasOutput = !!(result.outputAddr || result.CoilA || result.CoilB);
+  result.errTimerDirA = !!(result.CoilA && result.LSH && result.ErrorA);
+  result.errTimerDirB = !!(result.CoilB && result.LSL && result.ErrorB);
+  return result;
+}
+
 /**
  * cgUCBuildTemplateContext(ctx)
  * Nhận ctx từ cgUCBuildContext và bổ sung các trường tính toán sẵn
@@ -1825,16 +1872,20 @@ function cgUCBuildTemplateContext(ctx) {
 
   // ── Legacy cylinder aliases only; device handling is shared via devices[] ─
   const cylinders = cys.map(function(cy, i) {
-    return Object.assign({}, cy, {
-      altStackInst: ucAltStackInst(i, cys.length),
-      hasOutput: !!(cy.outputAddr || cy.CoilA || cy.CoilB),
-      errTimerDirA: !!(cy.CoilA && cy.LSH && cy.ErrorA),
-      errTimerDirB: !!(cy.CoilB && cy.LSL && cy.ErrorB),
+    return Object.assign(ucEnrichCylinderManualAliases(cy), {
+      altStackInst: ucAltStackInst(i, cys.length)
     });
   });
 
-  const cysWithOut = [];
-  const cysWithOutEnriched = [];
+  const cysWithOut = cylinders.filter(function(cy) { return cy.CoilA || cy.CoilB; });
+  const cysWithOutEnriched = cysWithOut.map(function(cy, i) {
+    return Object.assign({}, cy, {
+      stackBeforeDirB: cysWithOut.length > 1 ? 'MRD' : '',
+      stackAfterDirB: cysWithOut.length > 1
+        ? (i === cysWithOut.length - 1 ? 'MPP' : 'MRD')
+        : ''
+    });
+  });
 
   // ── Enrich originSteps với prevStep info và actionLabel ────────────────────
   const originSteps = (ctx.originSteps || []).map(function(step, i) {

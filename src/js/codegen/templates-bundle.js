@@ -261,13 +261,14 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 ;{{{label}}}
 {{#each outputBindings}}
 {{#if hasActiveSteps}}
-{{#if singleStep}}
-LD   {{pad ../unit.flagAuto}}; Auto
-AND  {{pad activeSteps.[0].addr}}; {{{activeSteps.[0].label}}}
-ANB  {{pad activeSteps.[0].cmpAddr}}; {{{activeSteps.[0].label}}} Cmp
+{{#if hasOriginSteps}}
+{{#if originSingleStep}}
+LD   {{pad ../unit.flagOrigin}}; Origin
+AND  {{pad originSteps.[0].addr}}; {{{originSteps.[0].label}}}
+ANB  {{pad originSteps.[0].cmpAddr}}; {{{originSteps.[0].label}}} Cmp
 {{else}}
-LD   {{pad ../unit.flagAuto}}; Auto
-{{#each activeSteps}}
+LD   {{pad ../unit.flagOrigin}}; Origin
+{{#each originSteps}}
 LD   {{pad addr}}; {{{label}}}
 ANB  {{pad cmpAddr}}; {{{label}}} Cmp
 {{#if needsORL}}
@@ -275,6 +276,27 @@ ORL
 {{/if}}
 {{/each}}
 ANL
+{{/if}}
+{{/if}}
+{{#if hasAutoSteps}}
+{{#if autoSingleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad autoSteps.[0].addr}}; {{{autoSteps.[0].label}}}
+ANB  {{pad autoSteps.[0].cmpAddr}}; {{{autoSteps.[0].label}}} Cmp
+{{else}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each autoSteps}}
+LD   {{pad addr}}; {{{label}}}
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#if needsORL}}
+ORL
+{{/if}}
+{{/each}}
+ANL
+{{/if}}
+{{#if needsAutoGroupORL}}
+ORL
+{{/if}}
 {{/if}}
 ANB  {{pad ../unit.flagError}}; Error
 OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
