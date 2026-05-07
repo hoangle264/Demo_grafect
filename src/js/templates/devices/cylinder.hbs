@@ -1,15 +1,25 @@
 {{!-- ╔══════════════════════════════════════════════════════════╗ --}}
-{{!-- ║  device_cylinder — generic command renderer              ║ --}}
+{{!-- ║  device_cylinder — generic outputBindings renderer       ║ --}}
 {{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;{{{label}}}
-{{#each commandList}}
-{{#if driveSignal}}
-{{#with (lookup ../signalsByName driveSignal) as |driveAddr|}}
-{{#if driveAddr}}
-LD   {{pad ../../unit.flagAuto}}; Auto
-ANB  {{pad ../../unit.flagError}}; Error
-OUT  {{pad driveAddr}}; {{{../../label}}}_{{{../name}}}
+{{#each outputBindings}}
+{{#if hasActiveSteps}}
+{{#if singleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad activeSteps.[0].addr}}; {{{activeSteps.[0].label}}}
+ANB  {{pad activeSteps.[0].cmpAddr}}; {{{activeSteps.[0].label}}} Cmp
+{{else}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each activeSteps}}
+LD   {{pad addr}}; {{{label}}}
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#if needsORL}}
+ORL
 {{/if}}
-{{/with}}
+{{/each}}
+ANL
+{{/if}}
+ANB  {{pad ../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
 {{/if}}
 {{/each}}

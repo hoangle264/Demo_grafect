@@ -724,6 +724,79 @@ function ucFindDeviceCommandByDrive(dev, driveSignal) {
   }) || null;
 }
 
+function ucNormalizeSignalName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function ucResolveRuntimeSignalAddress(device, signalName) {
+  if (!device || !signalName) return '';
+  const byName = device.signalsByName || {};
+  const direct = byName[signalName];
+  if (direct !== undefined && direct !== '') return direct;
+  const target = ucNormalizeSignalName(signalName);
+  const hitKey = Object.keys(byName).find(function(key) {
+    return ucNormalizeSignalName(key) === target;
+  });
+  if (hitKey && byName[hitKey] !== undefined && byName[hitKey] !== '') return byName[hitKey];
+  const raw = device.signalAddresses || {};
+  if (raw[signalName] !== undefined && raw[signalName] !== '') return raw[signalName];
+  const rawKey = Object.keys(raw).find(function(key) {
+    return ucNormalizeSignalName(key) === target;
+  });
+  return rawKey ? (raw[rawKey] || '') : '';
+}
+
+function ucBuildDeviceOutputBindings(device, allComputedSteps) {
+  const dev = device || {};
+  const deviceId = dev.id || dev.label || '';
+  if (!deviceId) return [];
+
+  return (dev.commandList || []).map(function(cmd) {
+    const driveSignal = cmd.driveSignal || '';
+    const driveAddr = ucResolveRuntimeSignalAddress(dev, driveSignal);
+    const completeSignalRaw = cmd.complete && cmd.complete.sensor || '';
+    const completeSignal = String(completeSignalRaw || '').replace(/^NOT\s+/i, '');
+    const completeNegated = /^NOT\s+/i.test(completeSignalRaw || '');
+    const completeAddr = ucResolveRuntimeSignalAddress(dev, completeSignal);
+    const activeSteps = (allComputedSteps || []).filter(function(step) {
+      return (step.actions || []).some(function(act) {
+        return String(act.devLabel || '') === String(deviceId) &&
+          ucNormalizeSignalName(act.sigName) === ucNormalizeSignalName(driveSignal);
+      });
+    }).map(function(step, idx) {
+      const label = (step.actions || []).map(function(act) {
+        return act.devLabel === deviceId ? (act.devLabel + ' ' + (act.sigName || '')) : '';
+      }).filter(Boolean)[0] || step.actionLabel || step.label || '';
+      return {
+        stepId: step.stepId,
+        addr: step.addr,
+        cmpAddr: step.cmpAddr,
+        label: label,
+        isFirst: idx === 0,
+        needsORL: idx > 0
+      };
+    });
+
+    return Object.assign({}, cmd, {
+      commandName: cmd.name || '',
+      actionLabel: cmd.actionLabel || cmd.name || driveSignal,
+      driveSignal: driveSignal,
+      driveAddr: driveAddr,
+      completeSignal: completeSignal,
+      completeSignalRaw: completeSignalRaw,
+      completeAddr: completeAddr,
+      completeValue: cmd.complete && cmd.complete.value || '',
+      completeNegated: completeNegated,
+      activeSteps: activeSteps,
+      hasActiveSteps: activeSteps.length > 0,
+      singleStep: activeSteps.length === 1,
+      multiStep: activeSteps.length > 1
+    });
+  }).filter(function(binding) {
+    return binding.driveSignal && binding.driveAddr;
+  });
+}
+
 let UC_DEVICE_COMMAND_LIBRARY = {};
 
 function ucNormalizeCommandLibrary(config) {
@@ -1119,7 +1192,7 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
     }, dev));
     const signalsByName = Object.assign({}, enriched.signalsByName || {}, scannedSignals);
     const signalAddresses = Object.assign({}, enriched.signalAddresses || {}, scannedSignals);
-    return Object.assign({}, enriched, signalsByName, {
+    const runtimeDevice = Object.assign({}, enriched, signalsByName, {
       kind: kind,
       index: listIndex,
       id: id,
@@ -1128,6 +1201,8 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
       signalsByName: signalsByName,
       relatedSteps: relatedSteps
     });
+    runtimeDevice.outputBindings = ucBuildDeviceOutputBindings(runtimeDevice, allComputedSteps);
+    return runtimeDevice;
   });
 
   // Legacy aliases only. Device handling is shared through runtimeDevices/devices.
@@ -1537,80 +1612,28 @@ function cgUCGenerateOutput(ctx) {
 
   L.push(';<h1/>Output');
 
-  ctx.cylinders.forEach(function(cy) {
-    if (!cy.outDirA && !cy.outDirB) return;  // bỏ qua cylinder không có địa chỉ output
-    L.push(';' + cy.label);
-
-    // ── dirA block: SET CoilA, RES CoilB ─────────────────────────────
-    // stepDirA: step trong station flow điều khiển dirA (trong khi active)
-    if (cy.stepDirA && cy.CoilA) {
-      L.push(`LD   ${ucPad(u.flagAuto)}; Auto`);
-      L.push(`AND  ${ucPad(cy.stepDirA.addr)}; ${cy.label} ${cy.dirAName}`);
-      L.push(`ANB  ${ucPad(cy.stepDirA.cmpAddr)}; ${cy.label} ${cy.dirAName} Cmp`);
-      L.push(`LD   ${ucPad(u.flagManual)}; Manual`);
-      L.push(`ANP  ${ucPad(cy.sysManFlag)}; sys_man_${cy.label}`);
-      L.push('ORL');
-      if (cy.LockA) L.push(`ANB  ${ucPad(cy.LockA)}; ${u.label}_${cy.label}_Lock_${cy.dirAName}`);
-      L.push(`SET  ${ucPad(cy.CoilA)}; Out_${u.label}_${cy.label}_${cy.dirAName}`);
-      if (cy.CoilB) {
-        L.push('CON');
-        L.push(`RES  ${ucPad(cy.CoilB)}; Out_${u.label}_${cy.label}_${cy.dirBName}`);
-      }
-    }
-
-    // ── dirB block: RES CoilA, SET CoilB ─────────────────────────────
-    // stepsForDirB: tất cả steps (origin + station) điều khiển dirB
-    if (cy.stepsForDirB.length > 0 && cy.CoilB) {
-      L.push(`LD   ${ucPad(u.flagAuto)}; Auto`);
-
-      if (cy.stepsForDirB.length === 1) {
-        const s = cy.stepsForDirB[0];
-        const sLabel = s.actions.length
-          ? (s.actions[0].devLabel || '') + ' ' + ucDirFromSigName(s.actions[0].sigName || '')
-          : s.label;
-        L.push(`LD   ${ucPad(s.addr)}; ${sLabel}`);
-        L.push(`ANB  ${ucPad(s.cmpAddr)}; ${sLabel} Cmp`);
+  (ctx.devices || []).forEach(function(dev) {
+    L.push(';' + (dev.label || dev.id || dev.kind || 'device'));
+    (dev.outputBindings || []).forEach(function(binding) {
+      if (!binding.hasActiveSteps || !binding.driveAddr) return;
+      L.push(`;${binding.actionLabel || binding.commandName || binding.driveSignal}`);
+      if (binding.singleStep) {
+        const step = binding.activeSteps[0];
+        L.push(`LD   ${ucPad(u.flagAuto)}; Auto`);
+        L.push(`AND  ${ucPad(step.addr)}; ${step.label}`);
+        L.push(`ANB  ${ucPad(step.cmpAddr)}; ${step.label} Cmp`);
       } else {
-        // Nhiều step dirB → ORL block
-        // Pattern từ Code gen.txt:
-        //   LD @MR100; ANB @MR101; LD @MR304; ANB @MR305; ORL (→ ANL ở cuối)
-        cy.stepsForDirB.forEach(function(s, si) {
-          const sLabel = s.actions.length
-            ? (s.actions[0].devLabel || '') + ' ' + ucDirFromSigName(s.actions[0].sigName || '')
-            : s.label;
-          L.push(`LD   ${ucPad(s.addr)}; ${sLabel}`);
-          L.push(`ANB  ${ucPad(s.cmpAddr)}; ${sLabel} Cmp`);
-          if (si > 0) L.push('ORL');
+        L.push(`LD   ${ucPad(u.flagAuto)}; Auto`);
+        binding.activeSteps.forEach(function(step) {
+          L.push(`LD   ${ucPad(step.addr)}; ${step.label}`);
+          L.push(`ANB  ${ucPad(step.cmpAddr)}; ${step.label} Cmp`);
+          if (step.needsORL) L.push('ORL');
         });
+        L.push('ANL');
       }
-      L.push('ANL');
-      L.push(`LD   ${ucPad(u.flagManual)}; Manual`);
-      L.push(`ANF  ${ucPad(cy.sysManFlag)}; sys_man_${cy.label}`);
-      L.push('ORL');
-      if (cy.LockB) L.push(`ANB  ${ucPad(cy.LockB)}; ${u.label}_${cy.label}_Lock ${cy.dirBName}`);
-      if (cy.CoilA) {
-        L.push(`RES  ${ucPad(cy.CoilA)}; Out_${u.label}_${cy.label}_${cy.dirAName}`);
-        L.push('CON');
-      }
-      L.push(`SET  ${ucPad(cy.CoilB)}; Out_${u.label}_${cy.label}_${cy.dirBName}`);
-    }
-
-    // ── Error timers ──────────────────────────────────────────────────────
-    const timeout = cy.errorTimeout || 500;
-    if (cy.CoilA && cy.LSH && cy.ErrorA) {
-      L.push(`LD   ${ucPad(cy.CoilA)}; Out_${u.label}_${cy.label}_${cy.dirAName}`);
-      L.push(`ANB  ${ucPad(cy.LSH)}; in_${u.label}_${cy.label}_${cy.dirAName}`);
-      L.push(`ANB  ${ucPad(u.flagManual)}; Manual`);
-      L.push(`ANB  ${ucPad(u.flagErrStop)}; Operation Error Stop`);
-      L.push(`ONDL #${timeout} ${cy.ErrorA}   ; Error_${cy.label}_${cy.dirAName}`);
-    }
-    if (cy.CoilB && cy.LSL && cy.ErrorB) {
-      L.push(`LD   ${ucPad(cy.CoilB)}; Out_${u.label}_${cy.label}_${cy.dirBName}`);
-      L.push(`ANB  ${ucPad(cy.LSL)}; in_${u.label}_${cy.label}_${cy.dirBName}`);
-      L.push(`ANB  ${ucPad(u.flagManual)}; Manual`);
-      L.push(`ANB  ${ucPad(u.flagErrStop)}; Operation Error Stop`);
-      L.push(`ONDL #${timeout} ${cy.ErrorB}   ; Error_${cy.label}_${cy.dirBName}`);
-    }
+      L.push(`ANB  ${ucPad(u.flagError)}; Error`);
+      L.push(`OUT  ${ucPad(binding.driveAddr)}; ${(dev.label || dev.id)}_${binding.commandName || binding.driveSignal}`);
+    });
   });
 
   L.push('');
