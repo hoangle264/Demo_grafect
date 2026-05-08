@@ -8,6 +8,7 @@
         "extend": {
           "actionLabel": "Cylinder Extend",
           "driveSignal": "CoilA",
+          "resetSignal": "CoilB",
           "complete": {
             "sensor": "LSH",
             "sensorLabel": "Cylinder High Limit"
@@ -16,6 +17,7 @@
         "retract": {
           "actionLabel": "Cylinder Retract",
           "driveSignal": "CoilB",
+          "resetSignal": "CoilA",
           "complete": {
             "sensor": "LSL",
             "sensorLabel": "Cylinder Low Limit"

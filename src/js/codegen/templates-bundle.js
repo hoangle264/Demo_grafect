@@ -264,44 +264,83 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 {{#if hasOriginSteps}}
 {{#if originSingleStep}}
 LD   {{pad ../unit.flagOrigin}}; Origin
-AND  {{pad originSteps.[0].addr}}; {{{originSteps.[0].label}}}
+AND  {{pad originSteps.[0].addr}}; {{{originSteps.[0].label}}} mark origin1
 ANB  {{pad originSteps.[0].cmpAddr}}; {{{originSteps.[0].label}}} Cmp
 {{else}}
 LD   {{pad ../unit.flagOrigin}}; Origin
 {{#each originSteps}}
-LD   {{pad addr}}; {{{label}}}
+LD   {{pad addr}}; {{{label}}} mark origin1
 ANB  {{pad cmpAddr}}; {{{label}}} Cmp
-{{#if needsORL}}
+{{#unless @first}}
 ORL
+{{/unless}}
+{{#if @last}}
+ANL
 {{/if}}
 {{/each}}
-ANL
 {{/if}}
 {{/if}}
 {{#if hasAutoSteps}}
 {{#if autoSingleStep}}
 LD   {{pad ../unit.flagAuto}}; Auto
-AND  {{pad autoSteps.[0].addr}}; {{{autoSteps.[0].label}}}
+AND  {{pad autoSteps.[0].addr}}; {{{autoSteps.[0].label}}} mark auto
 ANB  {{pad autoSteps.[0].cmpAddr}}; {{{autoSteps.[0].label}}} Cmp
 {{else}}
 LD   {{pad ../unit.flagAuto}}; Auto
 {{#each autoSteps}}
-LD   {{pad addr}}; {{{label}}}
+LD   {{pad addr}}; {{{label}}} mark auto
 ANB  {{pad cmpAddr}}; {{{label}}} Cmp
-{{#if needsORL}}
+{{#unless @first}}
 ORL
+{{/unless}}
+{{#if @last}}
+ANL
 {{/if}}
 {{/each}}
-ANL
 {{/if}}
 {{#if needsAutoGroupORL}}
 ORL
 {{/if}}
+LD   {{pad ../HmiManBtn}}; Hmi_{{../label}}_Manual
+ANP  {{pad ../HmiManBtn}}; Sys_{{../label}}_Manual
+ORL
 {{/if}}
 ANB  {{pad ../unit.flagError}}; Error
-OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
+SET  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
+{{#if resetAddr}}
+CON
+RES  {{pad resetAddr}}; {{{../label}}}_{{{resetSignal}}}
+{{/if}}
 {{/if}}
 {{/each}}
+;Error
+LDB  {{pad DisSnsH}}
+AND  {{pad LSH}};
+INV
+AND  {{pad CoilA}}
+ONDL #500 {{pad ErrorA}};
+LDB  {{pad DisSnsL}}
+AND  {{pad LSL}};
+INV
+AND  {{pad CoilB}}
+ONDL #500 {{pad ErrorB}};
+;State
+LD  {{pad CoilA}}; {{{State}}}
+LD  {{pad DisSnsH}}
+AND {{pad ErrorA}};
+LDB {{pad DisSnsH}}
+AND {{pad LSH}};
+ORL
+ANL
+SET {{pad State}}; {{{State}}}
+LD  {{pad CoilB}}; {{{State}}}
+LD  {{pad DisSnsL}}
+AND {{pad ErrorB}};
+LDB {{pad DisSnsL}}
+AND {{pad LSL}};
+ORL
+ANL
+RES {{pad State}}; {{{State}}}
 `,
 
   // ── src/templates/devices/motor.hbs ──────────────────────────────────────

@@ -754,6 +754,8 @@ function ucBuildDeviceOutputBindings(device, allComputedSteps) {
   return (dev.commandList || []).map(function(cmd) {
     const driveSignal = cmd.driveSignal || '';
     const driveAddr = ucResolveRuntimeSignalAddress(dev, driveSignal);
+    const resetSignal = cmd.resetSignal || '';
+    const resetAddr = ucResolveRuntimeSignalAddress(dev, resetSignal);
     const completeSignalRaw = cmd.complete && cmd.complete.sensor || '';
     const completeSignal = String(completeSignalRaw || '').replace(/^NOT\s+/i, '');
     const completeNegated = /^NOT\s+/i.test(completeSignalRaw || '');
@@ -772,6 +774,8 @@ function ucBuildDeviceOutputBindings(device, allComputedSteps) {
         addr: step.addr,
         cmpAddr: step.cmpAddr,
         label: label,
+        flowMode: step.flowMode || '',
+        flowLabel: step.flowLabel || '',
         isFirst: idx === 0,
         needsORL: idx > 0
       };
@@ -786,6 +790,8 @@ function ucBuildDeviceOutputBindings(device, allComputedSteps) {
       actionLabel: cmd.actionLabel || cmd.name || driveSignal,
       driveSignal: driveSignal,
       driveAddr: driveAddr,
+      resetSignal: resetSignal,
+      resetAddr: resetAddr,
       completeSignal: completeSignal,
       completeSignalRaw: completeSignalRaw,
       completeAddr: completeAddr,
