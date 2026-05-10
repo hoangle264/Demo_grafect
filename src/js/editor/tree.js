@@ -50,14 +50,14 @@ function renderTree() {
   if (!project.units) project.units = [];
   if (!project.devices) project.devices = [];
 
-  // ── Machine name header ──
-  const machineRow = document.createElement('div');
-  machineRow.className = 'tree-machine';
-  machineRow.innerHTML = `
-    <span style="font-size:11px;">🏭</span>
-    <span class="tree-machine-name">${esc2(project.machineName||project.name)}</span>
-    <button class="tree-machine-edit" onclick="renameMachine()" title="Rename machine">✎</button>`;
-  body.appendChild(machineRow);
+  // ── Project name header ──
+  const editProjectRow = document.createElement('div');
+  editProjectRow.className = 'tree-machine';
+  editProjectRow.innerHTML = `
+    <span style="font-size:11px;">📁</span>
+    <span class="tree-machine-name">${esc2(project.name)}</span>
+    <button class="tree-machine-edit" onclick="renameProject()" title="Edit project">✎</button>`;
+  body.appendChild(editProjectRow);
 
   const cfgWrap = document.createElement('div');
   cfgWrap.className = 'tree-devices-section';
@@ -108,7 +108,8 @@ function renderTree() {
   // ── Drivers section (ActiveDevices — mode='Drivers') ──
   body.appendChild(makeDriversSection());
 
-  document.getElementById('project-name-display').textContent = project.name;
+  const projectNameEl = document.getElementById('project-name-display');
+  if (projectNameEl) projectNameEl.textContent = project.name;
   updateAlignBtns();
 }
 
@@ -661,12 +662,6 @@ function addDriverDiagram() {
   });
   saveDiagramData(id, {steps:[],transitions:[],parallels:[],connections:[],vars:[]}, 1, 0, 100, 80, 1);
   saveProject(); renderTree(); openTab(id);
-}
-function renameMachine() {
-  renameMode='machine';
-  document.getElementById('modal-input').value = project.machineName||project.name;
-  document.getElementById('modal-rename').querySelector('h2').textContent = 'MACHINE NAME';
-  showModal('modal-rename');
 }
 
 // ── Inline Diagram Properties Panel ──

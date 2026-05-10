@@ -243,7 +243,6 @@ function confirmRename() {
   const val = document.getElementById('modal-input').value.trim();
   if (!val) return;
   if (renameMode==='project') { project.name=val; saveProject(); renderTree(); }
-  else if (renameMode==='machine') { project.machineName=val; saveProject(); renderTree(); toast('✓ Machine renamed'); }
   else if (renameMode?.startsWith('diagram:')) {
     const id=renameMode.split(':')[1];
     const d=project.diagrams.find(x=>x.id===id);
