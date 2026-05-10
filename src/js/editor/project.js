@@ -102,56 +102,8 @@ function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {
     unit: unit, description:''
   });
   const emptyState = {steps:[],transitions:[],parallels:[],connections:[],vars:[]};
-  if (isFirst) { createSample(id); }
-  else { saveDiagramData(id, emptyState, 1, 0, 100, 80, 1); }
+  saveDiagramData(id, emptyState, 1, 0, 100, 80, 1);
   saveProject(); renderTree(); openTab(id);
-}
-
-function createSample(id) {
-  // Add a sample unit if none exists
-  if(!project.units) project.units=[];
-  if(!project.machineName) project.machineName='Machine';
-  let sampleUnit = project.units[0];
-  if(!sampleUnit){
-    sampleUnit={id:'unit-sample',name:'Unit_01_Sample',open:true};
-    project.units.push(sampleUnit);
-  }
-  // Set metadata on this diagram
-  const d = project.diagrams.find(x=>x.id===id);
-  if(d){
-    d.unitId=sampleUnit.id; d.mode='Auto'; d.diagramType='Main';
-    d.machine=project.machineName; d.unit=sampleUnit.name; d.name='GRAFCET_Auto';
-  }
-  const s = {
-    steps: [
-      {id:'S1',x:200,y:60,number:0,label:'INIT',actions:[],initial:true},
-      {id:'S2',x:200,y:180,number:1,label:'RUN',actions:[{qualifier:'N',variable:'Motor_FWD',address:'%QX0.0',time:''},{qualifier:'S',variable:'Output_001',address:'%QX0.1',time:''}],initial:false},
-      {id:'S3',x:200,y:320,number:2,label:'STOP',actions:[{qualifier:'R',variable:'Motor_FWD',address:'%QX0.0',time:''},{qualifier:'N',variable:'Brake_ON',address:'%QX0.2',time:''}],initial:false},
-    ],
-    transitions: [
-      {id:'T1',x:185,y:136,condition:'start',label:''},
-      {id:'T2',x:185,y:276,condition:'limit_SW',label:''},
-      {id:'T3',x:185,y:376,condition:'reset',label:''},
-    ],
-    parallels: [],
-    connections: [
-      {id:'C1',from:'S1',fromPort:'bottom',to:'T1',toPort:'top'},
-      {id:'C2',from:'T1',fromPort:'bottom',to:'S2',toPort:'top'},
-      {id:'C3',from:'S2',fromPort:'bottom',to:'T2',toPort:'top'},
-      {id:'C4',from:'T2',fromPort:'bottom',to:'S3',toPort:'top'},
-      {id:'C5',from:'S3',fromPort:'bottom',to:'T3',toPort:'top'},
-      {id:'C6',from:'T3',fromPort:'bottom',to:'S1',toPort:'top'},
-    ],
-    vars:[
-      {label:'Motor_FWD',format:'BOOL',address:'%QX0.0',comment:'Motor forward output'},
-      {label:'Output_001',format:'BOOL',address:'%QX0.1',comment:'Output 1'},
-      {label:'Brake_ON',format:'BOOL',address:'%QX0.2',comment:'Brake solenoid'},
-      {label:'start',format:'BOOL',address:'%IX0.0',comment:'Start button'},
-      {label:'limit_SW',format:'BOOL',address:'%IX0.1',comment:'Limit switch'},
-      {label:'reset',format:'BOOL',address:'%IX0.2',comment:'Reset button'},
-    ]
-  };
-  saveDiagramData(id, s, 10, 3, 60, 40, 1);
 }
 
 // deleteDiagramData → moved to src/js/modules/store.js

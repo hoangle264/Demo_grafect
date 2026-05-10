@@ -274,7 +274,6 @@ function makeDevicesSection() {
     <span style="font-size:11px;margin:0 4px;">🔩</span>
     <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">STRUCTURE</span>
     <span style="font-size:8px;color:var(--text3);margin-right:4px;">${totalTypes}</span>
-    <button class="tree-dev-add-btn" onclick="addStandardDeviceTemplates();event.stopPropagation()" title="Add standard struct data templates (CY_Double_Act, CY_Single_Act, Motor_FwdRev)" style="border-color:#a78bfa;color:#a78bfa;">📦</button>
     <button class="tree-dev-add-btn" onclick="openDeviceTypeModal(null);event.stopPropagation()" title="Add Struct Data">⊕</button>`;
 
   const body = document.createElement('div');
@@ -500,76 +499,6 @@ function removeDeviceType(devId,e){
   if(!confirm(`Delete struct data "${d?.name}"?`)) return;
   project.devices=project.devices.filter(x=>x.id!==devId);
   saveProject(); renderTree();
-}
-
-// ── Standard device templates ─────────────────────────────────────────────────
-// Pre-defined device type templates for common actuators.
-// Each template creates a device type in the Device Library with the standard
-// signal definitions. Instances in the Variable Table map signals to PLC addresses,
-// so the same template works with any PLC brand by changing only the addresses.
-function addStandardDeviceTemplates() {
-  const mkSigId = (prefix, idx) => `sig-${prefix}-${idx}-${Date.now()}`;
-  const templates = [
-    {
-      name: 'CY_Double_Act',
-      categoryId: 'cat-cylinder',
-      signals: [
-        {id:mkSigId('cy2',0), name:'CoilA', dataType:'Bool', varType:'Output', comment:'Cylinder coil A'},
-        {id:mkSigId('cy2',1), name:'CoilB', dataType:'Bool', varType:'Output', comment:'Cylinder coil B'},
-        {id:mkSigId('cy2',2), name:'LSH',   dataType:'Bool', varType:'Input',  comment:'High position feedback'},
-        {id:mkSigId('cy2',3), name:'LSL',   dataType:'Bool', varType:'Input',  comment:'Low position feedback'},
-        {id:mkSigId('cy2',4), name:'LockA', dataType:'Bool', varType:'Input',  comment:'Coil A interlock signal'},
-        {id:mkSigId('cy2',5), name:'LockB', dataType:'Bool', varType:'Input',  comment:'Coil B interlock signal'},
-        {id:mkSigId('cy2',6), name:'Sys_Man', dataType:'Bool', varType:'Var',  comment:'Manual mode toggle bit'},
-        {id:mkSigId('cy2',7), name:'ErrA',  dataType:'Bool', varType:'Var',    comment:'Coil A travel timeout error'},
-        {id:mkSigId('cy2',8), name:'ErrB',  dataType:'Bool', varType:'Var',    comment:'Coil B travel timeout error'},
-      ],
-    },
-    {
-      name: 'CY_Single_Act',
-      categoryId: 'cat-cylinder',
-      signals: [
-        {id:mkSigId('cy1',0), name:'Out_Extend',  dataType:'Bool', varType:'Output', comment:'Extend solenoid coil'},
-        {id:mkSigId('cy1',1), name:'In_Extend',   dataType:'Bool', varType:'Input',  comment:'Extended position sensor'},
-        {id:mkSigId('cy1',2), name:'In_Retract',  dataType:'Bool', varType:'Input',  comment:'Retracted position sensor'},
-        {id:mkSigId('cy1',3), name:'Lock',        dataType:'Bool', varType:'Input',  comment:'Interlock signal'},
-        {id:mkSigId('cy1',4), name:'Sys_Man',     dataType:'Bool', varType:'Var',    comment:'Manual mode toggle bit'},
-        {id:mkSigId('cy1',5), name:'Err_Extend',  dataType:'Bool', varType:'Var',    comment:'Extend travel timeout error'},
-      ],
-    },
-    {
-      name: 'Motor_FwdRev',
-      categoryId: 'cat-motor',
-      signals: [
-        {id:mkSigId('mot',0), name:'Out_Fwd',  dataType:'Bool', varType:'Output', comment:'Forward run coil'},
-        {id:mkSigId('mot',1), name:'Out_Rev',  dataType:'Bool', varType:'Output', comment:'Reverse run coil'},
-        {id:mkSigId('mot',2), name:'In_Fwd',   dataType:'Bool', varType:'Input',  comment:'Forward limit / feedback'},
-        {id:mkSigId('mot',3), name:'In_Rev',   dataType:'Bool', varType:'Input',  comment:'Reverse limit / feedback'},
-        {id:mkSigId('mot',4), name:'Fault',    dataType:'Bool', varType:'Input',  comment:'Motor fault / overload input'},
-        {id:mkSigId('mot',5), name:'Sys_Man',  dataType:'Bool', varType:'Var',    comment:'Manual mode toggle bit'},
-        {id:mkSigId('mot',6), name:'Err_Fwd',  dataType:'Bool', varType:'Var',    comment:'Forward timeout error'},
-        {id:mkSigId('mot',7), name:'Err_Rev',  dataType:'Bool', varType:'Var',    comment:'Reverse timeout error'},
-      ],
-    },
-  ];
-
-  if(!project.devices) project.devices=[];
-  let added=0;
-  templates.forEach(tpl=>{
-    if(project.devices.find(d=>d.name===tpl.name)) return; // skip if already present
-    project.devices.push({
-      id:'dev-tmpl-'+tpl.name.toLowerCase()+'-'+Date.now(),
-      name:tpl.name,
-      categoryId:tpl.categoryId,
-      open:true,
-      signals:tpl.signals
-    });
-    added++;
-  });
-
-  if(!added){ toast('⚠ All standard templates already exist in this project'); return; }
-  saveProject(); renderTree();
-  toast(`✓ Added ${added} standard device template(s) — use Variable Table to create instances`);
 }
 
 function removeDeviceSignal(devId,sigId,e){
