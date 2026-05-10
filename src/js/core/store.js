@@ -20,6 +20,7 @@ let project = {
   diagrams:[],             // [{id, name, unitId, folderId (legacy), mode, diagramType, machine, unit}]
   folders:[],              // legacy virtual folders (kept for compat)
   devices:[],              // [{id, name, open, signals:[{id,name,dataType,ioType,address}]}]
+  variables:{ imported:[], user:[] },
   excelVars:[],            // [{label, format, signalAddresses:{...}, comment, _source:'excel'}]
   unitConfig:{}            // {[unitLabel]: {label, unitIndex, originBaseAddr, autoBaseAddr, flags, io}}
 };
@@ -131,6 +132,46 @@ function syncStructDataFromProjectData() {
   return changed;
 }
 
+function ensureProjectVariables() {
+  if (!project.variables || Array.isArray(project.variables)) {
+    project.variables = { imported:[], user:[] };
+  }
+  if (!Array.isArray(project.variables.imported)) project.variables.imported = [];
+  if (!Array.isArray(project.variables.user)) project.variables.user = [];
+  return project.variables;
+}
+
+function normalizeVariableRecord(v, bucket) {
+  const out = Object.assign({}, v || {});
+  if (!out.id) out.id = 'var-' + bucket + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  if (!out.kind) out.kind = out.signalAddresses ? 'struct' : 'primitive';
+  if (!out.dataType) out.dataType = out.format || 'BOOL';
+  out.format = out.dataType;
+  if (!out.source) out.source = bucket === 'imported' ? 'csv' : 'manual';
+  return out;
+}
+
+function upsertProjectVariable(bucket, variableDef) {
+  const vars = ensureProjectVariables();
+  const list = bucket === 'user' ? vars.user : vars.imported;
+  const next = normalizeVariableRecord(variableDef, bucket === 'user' ? 'user' : 'imported');
+  const idx = list.findIndex(function(item) {
+    return item.id === next.id || (item.label && item.label === next.label);
+  });
+  if (idx >= 0) list[idx] = next;
+  else list.push(next);
+  if (bucket !== 'user') {
+    if (!project.excelVars) project.excelVars = [];
+    const legacyIdx = project.excelVars.findIndex(function(item) {
+      return item.id === next.id || (item.label && item.label === next.label);
+    });
+    const legacyCopy = Object.assign({}, next);
+    if (legacyIdx >= 0) project.excelVars[legacyIdx] = legacyCopy;
+    else project.excelVars.push(legacyCopy);
+  }
+  return next;
+}
+
 // ── Project load ──────────────────────────────────────────────
 function loadProject() {
   try {
@@ -140,6 +181,7 @@ function loadProject() {
       if (!project.folders)       project.folders = [];
       if (!project.units)         project.units = [];
       if (!project.devices)       project.devices = [];
+      ensureProjectVariables();
       if (!project.devCategories) project.devCategories = [];
       if (!project.machineName)   project.machineName = project.name || 'Machine';
       if (!project.excelVars)     project.excelVars = [];
@@ -172,7 +214,7 @@ function loadProject() {
 
 // ── Flush active diagram to localStorage ──────────────────────
 function flushState() {
-  if (!activeDiagramId || activeDiagramId === '__vars__') return;
+  if (!activeDiagramId || activeDiagramId === '__vars__' || String(activeDiagramId).startsWith('__struct__:')) return;
   saveDiagramData(activeDiagramId);
   markModified(activeDiagramId, false);
 }

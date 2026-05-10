@@ -54,6 +54,9 @@ function handleImport(e) {
               ...d,
               signals: (d.signals||[]).map(s=>({...s}))
             })),
+            variables: raw.variables ? JSON.parse(JSON.stringify(raw.variables)) : {imported:[], user:[]},
+            excelVars: (raw.excelVars||[]).map(v=>({...v})),
+            unitConfig: JSON.parse(JSON.stringify(raw.unitConfig||{})),
             folders: (raw.folders||[]),
             diagrams: []
           };
@@ -82,6 +85,12 @@ function handleImport(e) {
               });
             }
           });
+        }
+
+        if(!mode && raw.variables) {
+          if(typeof ensureProjectVariables === 'function') ensureProjectVariables();
+          (raw.variables.imported||[]).forEach(v=>typeof upsertProjectVariable === 'function' ? upsertProjectVariable('imported', v) : project.variables.imported.push(v));
+          (raw.variables.user||[]).forEach(v=>typeof upsertProjectVariable === 'function' ? upsertProjectVariable('user', v) : project.variables.user.push(v));
         }
 
         // Add diagrams
@@ -161,6 +170,8 @@ function exportProject() {
       ...d,
       signals: (d.signals||[]).map(s=>({...s}))
     })),
+    variables: JSON.parse(JSON.stringify(project.variables || {imported:[], user:[]})),
+    unitConfig: JSON.parse(JSON.stringify(project.unitConfig || {})),
     folders: (project.folders||[]),                // legacy folders
     diagrams,
     version: '3.0',

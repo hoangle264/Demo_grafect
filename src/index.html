@@ -19,7 +19,35 @@
   </div>
   <div class="h-sep"></div>
   <div style="font-size:9px;color:var(--text3);letter-spacing:1px;">IEC 60848 · SFC v2</div>
-  <div class="header-right">
+  <div class="header-right menubar">
+    <div class="menu">
+      <button class="menu-btn">File</button>
+      <div class="menu-pop">
+        <button onclick="newProject()">New Project</button>
+        <button onclick="saveDiagram()">Save</button>
+        <button onclick="triggerImport()">Import Project</button>
+        <div class="menu-sep"></div>
+        <button onclick="exportHTML()">Export HTML</button>
+        <button onclick="exportProject()">Export Project</button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="menu-btn">Project</button>
+      <div class="menu-pop">
+        <button onclick="renameProject()">Configure</button>
+        <button onclick="openVarsTab()">Variables</button>
+        <button onclick="openDeviceTypeModal(null)">Structure</button>
+        <button onclick="addUnit()">Add Unit</button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="menu-btn">Tools</button>
+      <div class="menu-pop">
+        <button onclick="showExcelImportModal()">Import CSV/Excel</button>
+        <button onclick="showExportTablesModal()">Tables</button>
+        <button onclick="showGenerateCodeModal()">Code</button>
+      </div>
+    </div>
     <button class="btn" onclick="newProject()">✦ New Project</button>
     <button class="btn a" onclick="saveDiagram()">⬇ Save</button>
     <button class="btn g" onclick="exportHTML()">⬆ Export HTML</button>
@@ -218,8 +246,9 @@
   <!-- Global Vars Tab Panel (virtual tab — shown when __vars__ tab is active) -->
   <div id="gvt-main-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
     <div class="sub-panel-head" style="flex-shrink:0;border-bottom:1px solid var(--border);">
-      <span class="sub-panel-title">📋 GLOBAL VARIABLES</span>
+      <span class="sub-panel-title">📋 VARIABLES</span>
       <button class="panel-head-btn" onclick="showExcelImportModal()" title="Import từ CSV/Excel" style="border-color:#22d3ee;color:#22d3ee;">📥 Import</button>
+      <button class="panel-head-btn" onclick="gvtAddUserVar()" title="Add user variable">+ User Var</button>
     </div>
     <div style="padding:6px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
       <input id="gvt-search" type="text" placeholder="🔍 Filter..."
@@ -238,6 +267,15 @@
         <tbody id="gvt-tbody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Structure Tab Panel (virtual tab) -->
+  <div id="struct-main-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
+    <div class="sub-panel-head" style="flex-shrink:0;border-bottom:1px solid var(--border);">
+      <span class="sub-panel-title" id="struct-panel-title">STRUCTURE</span>
+      <button class="panel-head-btn" id="struct-panel-edit" onclick="" title="Edit Struct Data">Edit</button>
+    </div>
+    <div id="struct-panel-body" style="flex:1;overflow:auto;padding:14px;"></div>
   </div>
 
   <!-- Variable Table Panel -->

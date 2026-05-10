@@ -430,11 +430,15 @@ function eiImportFromCSVText(csvText, csvType, options) {
     }
 
     // Merge vào project.excelVars (override nếu cùng label)
+    if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
     if (!project.excelVars) project.excelVars = [];
     vars.forEach(function(v) {
-      const idx = project.excelVars.findIndex(function(e) { return e.label === v.label; });
-      if (idx >= 0) project.excelVars[idx] = v;
-      else project.excelVars.push(v);
+      if (typeof upsertProjectVariable === 'function') upsertProjectVariable('imported', v);
+      else {
+        const idx = project.excelVars.findIndex(function(e) { return e.label === v.label; });
+        if (idx >= 0) project.excelVars[idx] = v;
+        else project.excelVars.push(v);
+      }
     });
 
     if (typeof syncStructDataFromProjectData === 'function') {
@@ -478,11 +482,15 @@ function eiImportFromCSVText(csvText, csvType, options) {
       return { ok: false, message: 'Không tìm thấy dòng dữ liệu hợp lệ cho Struct Data "' + selectedStructType + '".', added: 0 };
     }
 
+    if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
     if (!project.excelVars) project.excelVars = [];
     vars.forEach(function(v) {
-      const idx = project.excelVars.findIndex(function(e) { return e.label === v.label; });
-      if (idx >= 0) project.excelVars[idx] = v;
-      else project.excelVars.push(v);
+      if (typeof upsertProjectVariable === 'function') upsertProjectVariable('imported', v);
+      else {
+        const idx = project.excelVars.findIndex(function(e) { return e.label === v.label; });
+        if (idx >= 0) project.excelVars[idx] = v;
+        else project.excelVars.push(v);
+      }
     });
 
     if (typeof syncStructDataFromProjectData === 'function') {

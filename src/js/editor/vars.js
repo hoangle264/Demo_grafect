@@ -24,18 +24,19 @@ function getLocalVars() {
 // Local vars take priority if same label exists in both.
 // This is the single source of truth for all lookups (datalist, gen code, etc.)
 function getVars() {
-  const local = getLocalVars();
-  const excelVars = (project.excelVars || []);
-  const localLabels = new Set(local.map(v => v.label));
-  const extra = excelVars.filter(v => !localLabels.has(v.label));
-  return [...local, ...extra];
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  const imported = (project.variables && project.variables.imported) || [];
+  const user = (project.variables && project.variables.user) || [];
+  return imported.concat(user);
 }
 
 function saveVars(vars) {
-  if(!activeDiagramId) return;
-  state.vars = vars;
-  saveDiagramData(activeDiagramId);   // persist immediately
-  markModified(activeDiagramId, true);
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  project.variables.user = (vars || []).map(function(v) {
+    return typeof normalizeVariableRecord === 'function' ? normalizeVariableRecord(v, 'user') : v;
+  });
+  saveProject();
+  if(typeof updateVarDatalist==='function') updateVarDatalist();
 }
 
 function toggleVarTable() {
@@ -389,6 +390,19 @@ const GVT_UNIT_SIGNALS = [
 ];
 
 function gvtGetEntries() {
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  const imported = ((project.variables && project.variables.imported) || []).map(function(v, idx) {
+    return { source: 'imported', bucket: 'imported', key: idx, label: v.label || '', format: v.format || v.dataType || 'BOOL', data: v };
+  });
+  const user = ((project.variables && project.variables.user) || []).map(function(v, idx) {
+    return { source: 'user', bucket: 'user', key: idx, label: v.label || '', format: v.format || v.dataType || 'BOOL', data: v };
+  });
+  const unitImported = Object.keys(project.unitConfig || {}).map(function(key) {
+    const cfg = project.unitConfig[key] || {};
+    return { source: 'unit', bucket: 'imported', key: key, label: cfg.label || key, format: 'Unit Station', data: cfg };
+  });
+  if (imported.length || user.length || unitImported.length) return imported.concat(unitImported, user);
+
   const unitConfig = project.unitConfig || {};
   const hasExcelUnitStation = (project.excelVars || []).some(function(v) {
     return v && v.format === 'Unit Station';
@@ -503,15 +517,22 @@ function renderGlobalVarTable() {
     return;
   }
 
+  let lastGroup = '';
   filtered.forEach(function(entry){
     const v = entry.data;
     const sigList = entry.source === 'unit' ? gvtGetUnitSigList() : gvtGetSigList(v);
-    const sAddr = v.signalAddresses||{};
     const isExpanded = v._sigExpanded !== false;
+    const groupName = (entry.bucket || entry.source) === 'user' ? 'User Variables' : 'Imported / Unit Devices';
+    if(groupName !== lastGroup) {
+      const groupTr = document.createElement('tr');
+      groupTr.innerHTML = `<td colspan="4" style="padding:8px 12px;background:var(--s2);color:var(--amber);font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;border-top:1px solid var(--border);">${groupName}</td>`;
+      tbody.appendChild(groupTr);
+      lastGroup = groupName;
+    }
 
     // ── Device header row ──
     const tr=document.createElement('tr');
-    tr.className='vt-dev-instance';
+    tr.className = sigList.length ? 'vt-dev-instance' : '';
 
     const tdDel=document.createElement('td');
     tdDel.className='vt-rownum';
@@ -519,11 +540,11 @@ function renderGlobalVarTable() {
     tr.appendChild(tdDel);
 
     const tdL=document.createElement('td');
-    tdL.innerHTML=`<span class="vt-cell lbl">${esc2(v.label||'')}</span>`;
+    tdL.innerHTML=`<input class="vt-cell lbl" value="${esc2(v.label||'')}" onchange="gvtEditVar('${entry.source}','${entry.key}','label',this.value)">`;
     tr.appendChild(tdL);
 
     const tdF=document.createElement('td');
-    tdF.innerHTML=`<span style="font-size:9px;color:var(--cyan);">${esc2(v.format||'')}</span>`;
+    tdF.innerHTML=`<input class="vt-cell" value="${esc2(v.format||v.dataType||'BOOL')}" onchange="gvtEditVar('${entry.source}','${entry.key}','format',this.value)" style="color:var(--cyan);">`;
     tr.appendChild(tdF);
 
     const tdTog=document.createElement('td');
@@ -533,13 +554,20 @@ function renderGlobalVarTable() {
       <span style="opacity:.7;">${sigList.length} address${sigList.length!==1?'es':''}</span>
     </span>`;
     tdTog.addEventListener('click',function(){
-      if(entry.source === 'excel' && project.excelVars[entry.key]) {
+      if((entry.source === 'imported' || entry.source === 'user') && project.variables && project.variables[entry.bucket] && project.variables[entry.bucket][entry.key]) {
+        project.variables[entry.bucket][entry.key]._sigExpanded = !isExpanded;
+      } else if(entry.source === 'excel' && project.excelVars[entry.key]) {
         project.excelVars[entry.key]._sigExpanded = !isExpanded;
       } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
         project.unitConfig[entry.key]._sigExpanded = !isExpanded;
       }
       saveProject(); renderGlobalVarTable();
     });
+    if(!sigList.length) {
+      tdTog.style.cssText = '';
+      tdTog.onclick = null;
+      tdTog.innerHTML=`<input class="vt-cell addr" value="${esc2(v.address||'')}" placeholder="%MX0.0" onchange="gvtEditVar('${entry.source}','${entry.key}','address',this.value)">`;
+    }
     tr.appendChild(tdTog);
     tbody.appendChild(tr);
 
@@ -579,7 +607,15 @@ function renderGlobalVarTable() {
         addrInp.value=entry.source === 'unit' ? gvtGetUnitAddr(v, sig.path) : gvtGetExcelSignalAddress(v, sig);
         addrInp.placeholder=sig.varType==='Input'?'MR…':sig.varType==='Output'?'LR…':'MR…';
         addrInp.addEventListener('change',function(){
-          if(entry.source === 'excel' && project.excelVars[entry.key]){
+          if((entry.source === 'imported' || entry.source === 'user') && project.variables && project.variables[entry.bucket] && project.variables[entry.bucket][entry.key]){
+            const rec = project.variables[entry.bucket][entry.key];
+            if(!rec.signalAddresses) rec.signalAddresses={};
+            rec.signalAddresses[sig.id]=addrInp.value;
+            if(entry.source === 'imported' && project.excelVars) {
+              const legacyIdx = project.excelVars.findIndex(function(x) { return x && x.label === rec.label; });
+              if(legacyIdx >= 0) project.excelVars[legacyIdx] = Object.assign({}, rec);
+            }
+          } else if(entry.source === 'excel' && project.excelVars[entry.key]){
             if(!project.excelVars[entry.key].signalAddresses) project.excelVars[entry.key].signalAddresses={};
             project.excelVars[entry.key].signalAddresses[sig.id]=addrInp.value;
           } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
@@ -596,7 +632,64 @@ function renderGlobalVarTable() {
   });
 }
 
+function gvtResolveEntry(source, key) {
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  const idx = parseInt(key, 10);
+  if (source === 'imported') return { list: project.variables.imported, item: project.variables.imported[idx], idx: idx, bucket:'imported' };
+  if (source === 'user') return { list: project.variables.user, item: project.variables.user[idx], idx: idx, bucket:'user' };
+  if (source === 'excel') return { list: project.excelVars || [], item: (project.excelVars || [])[idx], idx: idx, bucket:'excel' };
+  return { list: null, item: null, idx: idx, bucket:'' };
+}
+
+function gvtEditVar(source, key, field, value) {
+  const hit = gvtResolveEntry(source, key);
+  if(!hit.item) return;
+  hit.item[field] = value;
+  if(field === 'format') {
+    hit.item.dataType = value;
+    const devType = (project.devices||[]).find(d=>d.name===value);
+    if(devType) {
+      hit.item.kind = 'struct';
+      if(!hit.item.signalAddresses) hit.item.signalAddresses = {};
+    } else {
+      hit.item.kind = 'primitive';
+      delete hit.item.signalAddresses;
+    }
+  }
+  if(source === 'imported' && project.excelVars) {
+    const legacyIdx = project.excelVars.findIndex(function(v) { return v && v.label === hit.item.label; });
+    if(legacyIdx >= 0) project.excelVars[legacyIdx] = Object.assign({}, hit.item);
+  }
+  saveProject();
+  renderGlobalVarTable();
+  if(typeof updateVarDatalist==='function') updateVarDatalist();
+}
+
+function gvtAddUserVar() {
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  const label = 'UserVar_' + String(project.variables.user.length + 1).padStart(2, '0');
+  const base = { label: label, format: 'BOOL', dataType: 'BOOL', address: '', comment: '', source: 'manual' };
+  project.variables.user.push(typeof normalizeVariableRecord === 'function' ? normalizeVariableRecord(base, 'user') : base);
+  saveProject();
+  renderGlobalVarTable();
+  toast('Added user variable');
+}
+
 function gvtDeleteVar(source, key) {
+  if(source === 'imported' || source === 'user') {
+    const hit = gvtResolveEntry(source, key);
+    if(!hit.list || !hit.item) return;
+    if(!confirm('Delete "'+(hit.item.label||'variable')+'"?')) return;
+    const deletedLabel = hit.item.label;
+    hit.list.splice(hit.idx,1);
+    if(source === 'imported' && project.excelVars) {
+      project.excelVars = project.excelVars.filter(function(v) { return v && v.label !== deletedLabel; });
+    }
+    saveProject();
+    renderGlobalVarTable();
+    if(typeof updateVarDatalist==='function') updateVarDatalist();
+    return;
+  }
   if(source === 'excel') {
     const idx = parseInt(key, 10);
     if(!project.excelVars||idx<0||idx>=project.excelVars.length) return;
@@ -641,6 +734,7 @@ function onVtResizeUp(){
 //  BOOT
 // ═══════════════════════════════════════════════════════════
 window.addEventListener('load', ()=>{
+  document.body.classList.add('unified-vars');
   init();
   initVtResize();
   // Restore var table open state

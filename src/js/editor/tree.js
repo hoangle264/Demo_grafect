@@ -7,6 +7,17 @@ function renderTabs() {
   const bar = document.getElementById('tabs-bar');
   bar.innerHTML = '';
   openTabs.forEach(t => {
+    if(String(t.id).startsWith(STRUCT_TAB_PREFIX)) {
+      const devId = String(t.id).slice(STRUCT_TAB_PREFIX.length);
+      const dev = (project.devices||[]).find(d=>d.id===devId);
+      const tab = document.createElement('div');
+      tab.className = 'tab' + (activeDiagramId===t.id?' active':'');
+      tab.dataset.id = t.id;
+      tab.innerHTML = `<span class="tab-name">Structure: ${esc2(dev?.name||'Unknown')}</span><button class="tab-close" onclick="closeTab('${t.id}',event)">Ã—</button>`;
+      tab.addEventListener('click', e=>{ if(!e.target.classList.contains('tab-close')) openStructTab(devId); });
+      bar.appendChild(tab);
+      return;
+    }
     if(t.id === VARS_TAB_ID) {
       const tab = document.createElement('div');
       tab.className = 'tab' + (activeDiagramId===VARS_TAB_ID?' active':'');
@@ -48,12 +59,23 @@ function renderTree() {
     <button class="tree-machine-edit" onclick="renameMachine()" title="Rename machine">✎</button>`;
   body.appendChild(machineRow);
 
-  // ── Devices section (global device type declarations) ──
-  const devSection = makeDevicesSection();
-  body.appendChild(devSection);
+  const cfgWrap = document.createElement('div');
+  cfgWrap.className = 'tree-devices-section';
+  cfgWrap.innerHTML = `
+    <div class="tree-devices-head">
+      <span style="font-size:11px;margin:0 4px;">⚙</span>
+      <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">CONFIGURE</span>
+    </div>
+    <div class="tree-devices-body">
+      <div class="tree-item" style="padding-left:24px;" onclick="toast('PLC model configuration is not wired yet')">
+        <span class="tree-item-icon">▣</span><span class="tree-item-name">PLC model</span>
+      </div>
+    </div>`;
+  body.appendChild(cfgWrap);
 
   // ── Variables (global Excel/imported vars) ──
-  const varsCount = (project.excelVars||[]).length;
+  const varGroups = typeof ensureProjectVariables === 'function' ? ensureProjectVariables() : (project.variables || {imported:[], user:[]});
+  const varsCount = ((varGroups.imported||[]).length) + ((varGroups.user||[]).length) + Object.keys(project.unitConfig||{}).length;
   const varsItem = document.createElement('div');
   varsItem.className = 'tree-item';
   varsItem.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;cursor:pointer;font-size:10px;color:var(--text2);border-top:1px solid var(--border);';
@@ -62,6 +84,10 @@ function renderTree() {
   varsItem.addEventListener('mouseleave', ()=>{ varsItem.style.background=''; });
   varsItem.addEventListener('click', ()=>openVarsTab());
   body.appendChild(varsItem);
+
+  // Structure section (global struct type declarations)
+  const devSection = makeDevicesSection();
+  body.appendChild(devSection);
 
   // ── Units ──
   project.units.forEach(u=>{
@@ -245,7 +271,7 @@ function makeDevicesSection() {
   head.innerHTML = `
     <span class="tree-dev-toggle ${isOpen?'':'closed'}">▾</span>
     <span style="font-size:11px;margin:0 4px;">🔩</span>
-    <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">STRUCT DATA</span>
+    <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">STRUCTURE</span>
     <span style="font-size:8px;color:var(--text3);margin-right:4px;">${totalTypes}</span>
     <button class="tree-dev-add-btn" onclick="addStandardDeviceTemplates();event.stopPropagation()" title="Add standard struct data templates (CY_Double_Act, CY_Single_Act, Motor_FwdRev)" style="border-color:#a78bfa;color:#a78bfa;">📦</button>
     <button class="tree-dev-add-btn" onclick="openDeviceTypeModal(null);event.stopPropagation()" title="Add Struct Data">⊕</button>`;
@@ -283,7 +309,7 @@ function renderDevicesList(container) {
 }
 
 function makeDevTypeRow(dev) {
-  const isOpen = dev.open !== false;
+  const isOpen = false;
   const cat = getDevCatById(dev.categoryId||'cat-other');
   const wrap = document.createElement('div');
   wrap.className = 'tree-dev-type';
@@ -329,10 +355,8 @@ function makeDevTypeRow(dev) {
   }
 
   head.addEventListener('click',()=>{
-    dev.open=!dev.open;
-    children.classList.toggle('hidden',!dev.open);
-    head.querySelector('.tree-dev-toggle').classList.toggle('closed',!dev.open);
-    saveProject();
+    if(typeof openStructTab === 'function') openStructTab(dev.id);
+    else openDeviceTypeModal(dev.id);
   });
 
   // show/hide action buttons on hover

@@ -10,6 +10,7 @@
 //  VIRTUAL TAB: GLOBAL VARIABLES  (__vars__)
 // ═══════════════════════════════════════════════════════════
 const VARS_TAB_ID = '__vars__';
+const STRUCT_TAB_PREFIX = '__struct__:';
 
 function openVarsTab() {
   if(activeDiagramId && activeDiagramId !== VARS_TAB_ID) flushState();
@@ -18,9 +19,11 @@ function openVarsTab() {
   localStorage.setItem('gf2-active', VARS_TAB_ID);
   // Show vars panel, hide canvas + vartable
   const gvtPanel = document.getElementById('gvt-main-panel');
+  const structPanel = document.getElementById('struct-main-panel');
   const cw = document.getElementById('canvas-wrap');
   const vtp = document.getElementById('vartable-panel');
   if(gvtPanel) gvtPanel.style.display = 'flex';
+  if(structPanel) structPanel.style.display = 'none';
   if(cw) cw.style.display = 'none';
   if(vtp) vtp.style.display = 'none';
   selIds.clear();
@@ -29,11 +32,60 @@ function openVarsTab() {
   if(typeof renderGlobalVarTable === 'function') renderGlobalVarTable();
 }
 
-function _showCanvas() {
+function openStructTab(devId) {
+  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && !String(activeDiagramId).startsWith(STRUCT_TAB_PREFIX)) flushState();
+  const tabId = STRUCT_TAB_PREFIX + devId;
+  if(!openTabs.find(t=>t.id===tabId)) openTabs.push({id:tabId});
+  activeDiagramId = tabId;
+  localStorage.setItem('gf2-active', tabId);
   const gvtPanel = document.getElementById('gvt-main-panel');
+  const structPanel = document.getElementById('struct-main-panel');
   const cw = document.getElementById('canvas-wrap');
   const vtp = document.getElementById('vartable-panel');
   if(gvtPanel) gvtPanel.style.display = 'none';
+  if(structPanel) structPanel.style.display = 'flex';
+  if(cw) cw.style.display = 'none';
+  if(vtp) vtp.style.display = 'none';
+  renderTabs();
+  renderTree();
+  renderStructPanel(devId);
+}
+
+function renderStructPanel(devId) {
+  const dev = (project.devices||[]).find(d=>d.id===devId);
+  const title = document.getElementById('struct-panel-title');
+  const edit = document.getElementById('struct-panel-edit');
+  const body = document.getElementById('struct-panel-body');
+  if(!body) return;
+  if(!dev) {
+    if(title) title.textContent = 'STRUCTURE';
+    body.innerHTML = '<div class="vt-empty">Struct data not found</div>';
+    return;
+  }
+  if(title) title.textContent = 'STRUCTURE: ' + dev.name;
+  if(edit) edit.setAttribute('onclick', "openDeviceTypeModal('"+dev.id+"')");
+  const rows = (dev.signals||[]).map(sig=>`
+    <tr>
+      <td>${esc2(sig.name||'')}</td>
+      <td><span class="sdcol-type sig-bool">${esc2(sig.dataType||'Bool')}</span></td>
+      <td><span class="sdcol-io vt-${String(sig.varType||'Var').toLowerCase()}">${esc2(sig.varType||'Var')}</span></td>
+      <td>${esc2(sig.comment||'')}</td>
+    </tr>`).join('');
+  body.innerHTML = `
+    <div class="et-section-title">${esc2(dev.name)} signals</div>
+    <table class="et-table">
+      <thead><tr><th>Signal</th><th>Data Type</th><th>Variable Type</th><th>Comment</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="vt-empty">No signals</td></tr>'}</tbody>
+    </table>`;
+}
+
+function _showCanvas() {
+  const gvtPanel = document.getElementById('gvt-main-panel');
+  const structPanel = document.getElementById('struct-main-panel');
+  const cw = document.getElementById('canvas-wrap');
+  const vtp = document.getElementById('vartable-panel');
+  if(gvtPanel) gvtPanel.style.display = 'none';
+  if(structPanel) structPanel.style.display = 'none';
   if(cw) cw.style.display = '';
   if(vtp) vtp.style.display = '';
 }
@@ -106,6 +158,7 @@ function createSample(id) {
 
 function openTab(id) {
   if(id === VARS_TAB_ID) { openVarsTab(); return; }
+  if(String(id).startsWith(STRUCT_TAB_PREFIX)) { openStructTab(String(id).slice(STRUCT_TAB_PREFIX.length)); return; }
   _showCanvas();
   // Flush current state if active
   if (activeDiagramId) flushState();
@@ -141,7 +194,7 @@ function openTab(id) {
 
 function closeTab(id, e) {
   if (e) e.stopPropagation();
-  if (activeDiagramId === id && id !== VARS_TAB_ID) flushState();
+  if (activeDiagramId === id && id !== VARS_TAB_ID && !String(id).startsWith(STRUCT_TAB_PREFIX)) flushState();
   openTabs = openTabs.filter(t=>t.id!==id);
   if (activeDiagramId === id) {
     if (openTabs.length > 0) openTab(openTabs[openTabs.length-1].id);
@@ -209,7 +262,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElemen
 function newProject() {
   if (!confirm('Create new project? Current project will be cleared.')) return;
   project.diagrams.forEach(d=>deleteDiagramData(d.id));
-  project = { id:'proj-'+Date.now(), name:'New Project', machineName:'Machine', diagrams:[], folders:[], units:[] };
+  project = { id:'proj-'+Date.now(), name:'New Project', machineName:'Machine', diagrams:[], folders:[], units:[], devices:[], variables:{imported:[], user:[]}, excelVars:[], unitConfig:{} };
   openTabs = []; activeDiagramId=null;
   saveProject();
   addDiagram(true);
