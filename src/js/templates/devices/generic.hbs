@@ -1,11 +1,28 @@
-; WARNING: Generic output renderer for {{{kind}}} device {{{label}}}
+;{{{label}}}
 {{#if renderWarning}}
 ; {{{renderWarning}}}
 {{/if}}
-{{#if outputAddr}}
-LD   {{pad unit.flagAuto}}; Auto
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad outputAddr}}; {{{label}}}_Output
+{{#each outputBindings}}
+{{#if hasActiveSteps}}
+{{#if singleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad activeSteps.[0].addr}}; {{{activeSteps.[0].label}}}
+ANB  {{pad activeSteps.[0].cmpAddr}}; {{{activeSteps.[0].label}}} Cmp
 {{else}}
-; WARNING: {{{label}}} has no outputAddr; no output emitted.
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each activeSteps}}
+LD   {{pad addr}}; {{{label}}}
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#if needsORL}}
+ORL
 {{/if}}
+{{/each}}
+ANL
+{{/if}}
+ANB  {{pad ../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
+{{/if}}
+{{/each}}
+{{#unless outputBindings.length}}
+; WARNING: {{{label}}} has no outputBindings; no output emitted.
+{{/unless}}

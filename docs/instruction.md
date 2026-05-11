@@ -96,7 +96,7 @@ Không được giả định load order kiểu `constants -> utils -> store`. H
   - giữ state project toàn cục: `project`, `openTabs`, `activeDiagramId`
   - persist vào `localStorage`
   - khai báo và đồng bộ `project.excelVars` và `project.unitConfig`
-  - có `syncStructDataFromProjectData()` để tự tạo Struct Data type từ dữ liệu đang có
+  - có `syncStructDataFromProjectData()` chỉ để giữ Struct Data `Unit Station` tương thích legacy; không tự tạo schema thiết bị
 
 - `src/js/core/constants.js`
   - chứa runtime globals cho canvas/editor
@@ -271,13 +271,13 @@ Với Unit Station Struct Data, đường edit đúng là entry `excel`; không 
 
 Chức năng:
 
-- nếu có `excelVars` format `Cylinder` mà chưa có device type `Cylinder`, tự đảm bảo type này tồn tại
-- nếu có `project.unitConfig` legacy hoặc `excelVars` format `Unit Station`, tự đảm bảo tồn tại Struct Data type `Unit Station`
-- nếu có `excelVars` với format tùy chỉnh khác, có thể auto-create Struct Data type tương ứng từ `signalAddresses`
+- không tự tạo Struct Data type cho thiết bị từ `excelVars`; schema thiết bị do người dùng định nghĩa
+- nếu có `project.unitConfig` legacy hoặc `excelVars` format `Unit Station`, vẫn đảm bảo Struct Data type `Unit Station` để tương thích cấu hình unit
+- `excelVars` chỉ là instance dữ liệu/address đã import; codegen đọc lại qua `signalsByName`
 
 Điều này có nghĩa:
 
-- import dữ liệu có thể làm thay đổi `project.devices`
+- import dữ liệu thiết bị không được tự ý thêm schema hoặc địa chỉ mới vào `project.devices`
 - không nên sửa flow này một cách cục bộ mà bỏ qua migration/sync trong `store.js`
 
 ## 9. Import CSV hiện tại
@@ -468,10 +468,8 @@ Ví dụ cấu trúc cho Cylinder:
 Quy tắc quan trọng:
 
 - `driveSignal` và `complete.sensor` phải là đúng `name` của signal trong Struct Data tương ứng.
-- Với Cylinder Struct Data chuẩn hiện tại:
-  - `driveSignal: "CoilA"` hoàn tất bằng `complete.sensor: "LSH"`
-  - `driveSignal: "CoilB"` hoàn tất bằng `complete.sensor: "LSL"`
-- User có thể sửa các giá trị này để khớp Struct Data riêng, ví dụ thiết bị khác có signal command/complete khác.
+- Command cho mọi thiết bị, bao gồm Cylinder, được đọc từ `Devices.json` hoặc `dev.commands`; codegen không hard-code command mặc định riêng cho từng device.
+- User có thể sửa `driveSignal` / `complete.sensor` để khớp Struct Data riêng của từng thiết bị.
 - `commands` là object map theo command name (`extend`, `retract`, ...). Khi cần mở rộng output template theo số lượng command, có thể enrich context và dùng `{{#each commands}}` trong `.hbs`.
 
 `step-body.hbs` không tự suy luận sensor từ tên cũ `_SNS` nữa. Logic completion hiện tại là:
@@ -529,8 +527,9 @@ Quy tắc resolve output partial:
    - `device_robot`
    - `device_generic`
 5. Device output partial nên ưu tiên đọc tín hiệu qua `signalsByName` (map theo `signal.name`). `signalAddresses` chỉ nên coi là raw map theo `sig.id` để tương thích ngược.
-6. `devicesByKind` được thêm vào template context để các template có thể group theo loại device.
-7. `cylinders` và legacy `output.hbs` vẫn được giữ để tương thích, nhưng `output.hbs` chỉ phục vụ luồng cylinder cũ.
+6. `outputBindings` là object runtime trên từng device, được build từ `commandList` + `signalsByName` + step actions trong flowchart; đây không phải file config và không lưu vào project.
+7. `devicesByKind` được thêm vào template context để các template có thể group theo loại device.
+8. `cylinders` chỉ còn là alias tương thích ngược của `devicesByKind.cylinder`; device/admin addresses không được tự sinh và mọi thiết bị đi qua `devices`/`signalsByName`/`outputBindings`.
 
 Với device mới, có hai cách hỗ trợ output:
 

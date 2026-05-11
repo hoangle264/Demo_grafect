@@ -102,7 +102,7 @@ Cùng format với diagram `vars[]`, reuse toàn bộ pipeline `ucScanSignalsFro
 | `cyl_errA` | ErrorA | Var | Col 8 — Error A |
 | `cyl_errB` | ErrorB | Var | Col 9 — Error B |
 | `cyl_state` | State | Var | Col 7 — State |
-| `cyl_hmiMan` | HmiManBtn | Var | *(tự tính theo index nếu không có trong Excel)* |
+| `cyl_hmiMan` | HmiManBtn | Var | Chỉ dùng nếu người dùng khai báo/import; không tự tính |
 
 ---
 
@@ -152,8 +152,8 @@ Col 10 = Home Done   (output đã homed)
 - Migration trong `loadProject()`: khởi tạo nếu thiếu
 
 **Step 2** — `src/js/codegen/unit-config.js`
-- Tạo hàm `ucEnsureCylinderDeviceType()`: nếu `project.devices` chưa có "Cylinder" đúng 12 signal → tự động tạo/bổ sung
-- Gọi khi import Excel và khi `loadProject()`
+- Không tự tạo Struct Data type cho thiết bị khi import Excel hoặc load project
+- Struct Data type do người dùng định nghĩa; import chỉ tạo instance/address trong `project.excelVars`
 
 ---
 
@@ -265,7 +265,7 @@ Step 11 (index.html) — parallel với Step 9
 | File | Loại | Thay đổi |
 |:---|:---|:---|
 | `src/js/core/store.js` | Sửa | Thêm `excelVars`, `unitConfig` vào project schema + migration |
-| `src/js/codegen/unit-config.js` | Sửa | `cgUCBuildContext`, `ucNormalizeDeviceList`, `ucResolveCylinderAdminAddrs`, `ucEnsureCylinderDeviceType`, `ucBuildSyntheticConfig` |
+| `src/js/codegen/unit-config.js` | Sửa | `cgUCBuildContext`, `ucNormalizeDeviceList`, device address resolution from user-provided Struct Data/config only, `ucBuildSyntheticConfig` |
 | `src/js/codegen/modal.js` | Sửa | `cgUpdatePreview` dùng synthetic config khi không có JSON |
 | `src/templates/step-body.hbs` | Sửa | Bypass sensor OR condition |
 | `src/templates/devices/cylinder.hbs` | Sửa | Bypass sensor trong error timer |
@@ -292,6 +292,6 @@ Step 11 (index.html) — parallel với Step 9
 
 - **Scope ngoài v1**: Servo/StepMotor group, Manual Control group riêng biệt
 - **Column schema bất biến**: header row bắt buộc đúng thứ tự — không dùng tên cột để tra cứu
-- **"Cylinder" device type**: `ucEnsureCylinderDeviceType` chỉ bổ sung signal còn thiếu, không xóa signal cũ
+- **Device Struct Data**: không tự tạo/bổ sung schema thiết bị; người dùng quản lý Struct Data và địa chỉ import
 - **Nhiều units**: `project.unitConfig` là map `{[unitLabel]: config}` — hỗ trợ đa unit ngay từ đầu
 - **Undo import**: `excelImportToProject` backup `project.excelVars` cũ, rollback nếu validation fail

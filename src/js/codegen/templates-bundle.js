@@ -219,67 +219,8 @@ ZRES {{{steps.[0].addr}}} {{{resetEndAddr}}} ; {{{lastStep.actionLabel}}} Cmp
 
   // ── src/templates/output.hbs ─────────────────────────────────────────────
   output: `;<h1/>Output
-{{#each cylinders}}
-{{#if hasOutput}}
-;{{{label}}}
-{{#if hasDirAOutput}}
-LD   {{pad ../unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
-LD   {{pad ../unit.flagManual}}; Manual
-ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockA}}
-ANB  {{pad LockA}}; {{{../unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
-{{/if}}
-SET  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if CoilB}}
-CON
-RES  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{/if}}
-{{#if hasDirBOutput}}
-LD   {{pad ../unit.flagAuto}}; Auto
-{{#if singleStepDirB}}
-LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
-ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
-{{else}}
-{{#each enrichedStepsDirB}}
-LD   {{pad addr}}; {{{sLabel}}}
-ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
-{{#if needsORL}}
-ORL
-{{/if}}
-{{/each}}
-{{/if}}
-ANL
-LD   {{pad ../unit.flagManual}}; Manual
-ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockB}}
-ANB  {{pad LockB}}; {{{../unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
-{{/if}}
-{{#if CoilA}}
-RES  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-CON
-{{/if}}
-SET  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{#if errTimerDirA}}
-LD   {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad LSH}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad ../unit.flagManual}}; Manual
-ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}
-{{/if}}
-{{#if errTimerDirB}}
-LD   {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad LSL}}; in_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad ../unit.flagManual}}; Manual
-ANB  {{pad ../unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{/if}}
+{{#each devices}}
+{{{renderDeviceOutput this ../unit}}}
 {{/each}}
 `,
 
@@ -314,72 +255,92 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 `,
 
   // ── src/templates/devices/cylinder.hbs ───────────────────────────────────
-  device_cylinder: `{{#if hasOutput}}
+  device_cylinder: `{{!-- ╔══════════════════════════════════════════════════════════╗ --}}
+{{!-- ║  device_cylinder — generic outputBindings renderer       ║ --}}
+{{!-- ╚══════════════════════════════════════════════════════════╝ --}}
 ;{{{label}}}
-{{#if hasDirAOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
-LD   {{pad unit.flagManual}}; Manual
-ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
-ORL
-{{#if LockA}}
-ANB  {{pad LockA}}; {{{unit.label}}}_{{{label}}}_Lock_{{{dirAName}}}
-{{/if}}
-SET  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-{{#if CoilB}}
-CON
-RES  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{/if}}
-{{#if hasDirBOutput}}
-LD   {{pad unit.flagAuto}}; Auto
-{{#if singleStepDirB}}
-LD   {{pad enrichedStepsDirB.[0].addr}}; {{{enrichedStepsDirB.[0].sLabel}}}
-ANB  {{pad enrichedStepsDirB.[0].cmpAddr}}; {{{enrichedStepsDirB.[0].sLabel}}} Cmp
+{{#each outputBindings}}
+{{#if hasActiveSteps}}
+{{#if hasOriginSteps}}
+{{#if originSingleStep}}
+LD   {{pad ../unit.flagOrigin}}; Origin
+AND  {{pad originSteps.[0].addr}}; {{{originSteps.[0].label}}} mark origin1
+ANB  {{pad originSteps.[0].cmpAddr}}; {{{originSteps.[0].label}}} Cmp
 {{else}}
-{{#each enrichedStepsDirB}}
-LD   {{pad addr}}; {{{sLabel}}}
-ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
-{{#if needsORL}}
+LD   {{pad ../unit.flagOrigin}}; Origin
+{{#each originSteps}}
+LD   {{pad addr}}; {{{label}}} mark origin1
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#unless @first}}
 ORL
+{{/unless}}
+{{#if @last}}
+ANL
 {{/if}}
 {{/each}}
 {{/if}}
-ANL
-LD   {{pad unit.flagManual}}; Manual
-ANF  {{pad sysManFlag}}; sys_man_{{{label}}}
+{{/if}}
+{{#if hasAutoSteps}}
+{{#if autoSingleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad autoSteps.[0].addr}}; {{{autoSteps.[0].label}}} mark auto
+ANB  {{pad autoSteps.[0].cmpAddr}}; {{{autoSteps.[0].label}}} Cmp
+{{else}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each autoSteps}}
+LD   {{pad addr}}; {{{label}}} mark auto
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#unless @first}}
 ORL
-{{#if LockB}}
-ANB  {{pad LockB}}; {{{unit.label}}}_{{{label}}}_Lock {{{dirBName}}}
+{{/unless}}
+{{#if @last}}
+ANL
 {{/if}}
-{{#if CoilA}}
-RES  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
+{{/each}}
+{{/if}}
+{{#if needsAutoGroupORL}}
+ORL
+{{/if}}
+LD   {{pad ../HmiManBtn}}; Hmi_{{../label}}_Manual
+ANP  {{pad ../HmiManBtn}}; Sys_{{../label}}_Manual
+ORL
+{{/if}}
+ANB  {{pad ../unit.flagError}}; Error
+SET  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
+{{#if resetAddr}}
 CON
-{{/if}}
-SET  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-{{/if}}
-{{#if errTimerDirA}}
-LD   {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-ANB  {{pad LSH}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirAName}}}
-{{#if DisSnsH}}
-ANB  {{pad DisSnsH}}; {{{label}}} DisSns_{{{dirAName}}} bypass
-{{/if}}
-ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorA}}}   ; Error_{{{label}}}_{{{dirAName}}}_to_{{{fbDirAName}}}
-{{/if}}
-{{#if errTimerDirB}}
-LD   {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-ANB  {{pad LSL}}; FB_{{{unit.label}}}_{{{label}}}_{{{fbDirBName}}}
-{{#if DisSnsL}}
-ANB  {{pad DisSnsL}}; {{{label}}} DisSns_{{{dirBName}}} bypass
-{{/if}}
-ANB  {{pad unit.flagManual}}; Manual
-ANB  {{pad unit.flagErrStop}}; Operation Error Stop
-ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}_to_{{{fbDirBName}}}
+RES  {{pad resetAddr}}; {{{../label}}}_{{{resetSignal}}}
 {{/if}}
 {{/if}}
+{{/each}}
+;Error
+LDB  {{pad DisSnsH}}
+AND  {{pad LSH}};
+INV
+AND  {{pad CoilA}}
+ONDL #500 {{pad ErrorA}};
+LDB  {{pad DisSnsL}}
+AND  {{pad LSL}};
+INV
+AND  {{pad CoilB}}
+ONDL #500 {{pad ErrorB}};
+;State
+LD  {{pad CoilA}}; {{{State}}}
+LD  {{pad DisSnsH}}
+AND {{pad ErrorA}};
+LDB {{pad DisSnsH}}
+AND {{pad LSH}};
+ORL
+ANL
+SET {{pad State}}; {{{State}}}
+LD  {{pad CoilB}}; {{{State}}}
+LD  {{pad DisSnsL}}
+AND {{pad ErrorB}};
+LDB {{pad DisSnsL}}
+AND {{pad LSL}};
+ORL
+ANL
+RES {{pad State}}; {{{State}}}
 `,
 
   // ── src/templates/devices/motor.hbs ──────────────────────────────────────
@@ -455,77 +416,60 @@ AND  {{pad inPositionAddr}}; {{{label}}}_InPosition
 
   // ── src/templates/devices/device_robot.hbs ──────────────────────────────
   device_robot: `;{{{label}}} - Robot {{{id}}}
-
-{{#each commandList}}
-{{#if driveSignal}}
-{{#with (lookup ../signalsByName driveSignal) as |driveAddr|}}
-{{#if driveAddr}}
-LD   {{pad ../../unit.flagAuto}}; Auto
-ANB  {{pad ../../unit.flagError}}; Error
-OUT  {{pad driveAddr}}; {{{../../label}}}_{{{../name}}}
-{{/if}}
-{{/with}}
+{{#each outputBindings}}
+{{#if hasActiveSteps}}
+{{#if singleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad activeSteps.[0].addr}}; {{{activeSteps.[0].label}}}
+ANB  {{pad activeSteps.[0].cmpAddr}}; {{{activeSteps.[0].label}}} Cmp
+{{else}}
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each activeSteps}}
+LD   {{pad addr}}; {{{label}}}
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#if needsORL}}
+ORL
 {{/if}}
 {{/each}}
-
-{{#if signalsByName.PowerON}}
-LD   {{pad unit.flagAuto}}; Auto
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad signalsByName.PowerON}}; {{{label}}}_PowerON
+ANL
 {{/if}}
-
-{{#if signalsByName.AutoMode}}
-LD   {{pad unit.flagAuto}}; Auto
-OUT  {{pad signalsByName.AutoMode}}; {{{label}}}_AutoMode
+ANB  {{pad ../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
 {{/if}}
-
-{{#if signalsByName.Run}}
-LD   {{pad unit.flagAuto}}; Auto
-OUT  {{pad signalsByName.Run}}; {{{label}}}_Run
-{{/if}}
-
-{{#if signalsByName.Point1}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad signalsByName.Point1}}; Movement command Point1
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad signalsByName.Point1}}; {{{unit.label}}}_{{{label}}}_Point1_Cmd
-{{/if}}
-
-{{#if signalsByName.Point2}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad signalsByName.Point2}}; Movement command Point2
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad signalsByName.Point2}}; {{{unit.label}}}_{{{label}}}_Point2_Cmd
-{{/if}}
-
-{{#if signalsByName.Point3}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad signalsByName.Point3}}; Movement command Point3
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad signalsByName.Point3}}; {{{unit.label}}}_{{{label}}}_Point3_Cmd
-{{/if}}
-
-{{#if signalsByName.Point4}}
-LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad signalsByName.Point4}}; Movement command Point4
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad signalsByName.Point4}}; {{{unit.label}}}_{{{label}}}_Point4_Cmd
-{{/if}}
+{{/each}}
 `,
 
   // ── src/templates/devices/generic.hbs ────────────────────────────────────
-  device_generic: `; WARNING: Generic output renderer for {{{kind}}} device {{{label}}}
+  device_generic: `;{{{label}}}
 {{#if renderWarning}}
 ; {{{renderWarning}}}
 {{/if}}
-{{#if outputAddr}}
-LD   {{pad unit.flagAuto}}; Auto
-ANB  {{pad unit.flagError}}; Error
-OUT  {{pad outputAddr}}; {{{label}}}_Output
+{{#each outputBindings}}
+{{#if hasActiveSteps}}
+{{#if singleStep}}
+LD   {{pad ../unit.flagAuto}}; Auto
+AND  {{pad activeSteps.[0].addr}}; {{{activeSteps.[0].label}}}
+ANB  {{pad activeSteps.[0].cmpAddr}}; {{{activeSteps.[0].label}}} Cmp
 {{else}}
-; WARNING: {{{label}}} has no outputAddr; no output emitted.
+LD   {{pad ../unit.flagAuto}}; Auto
+{{#each activeSteps}}
+LD   {{pad addr}}; {{{label}}}
+ANB  {{pad cmpAddr}}; {{{label}}} Cmp
+{{#if needsORL}}
+ORL
 {{/if}}
+{{/each}}
+ANL
+{{/if}}
+ANB  {{pad ../unit.flagError}}; Error
+OUT  {{pad driveAddr}}; {{{../label}}}_{{{commandName}}}
+{{/if}}
+{{/each}}
+{{#unless outputBindings.length}}
+; WARNING: {{{label}}} has no outputBindings; no output emitted.
+{{/unless}}
 `,
+
 
 };
 

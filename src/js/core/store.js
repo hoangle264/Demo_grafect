@@ -86,7 +86,7 @@ function ensureStructDataType(name, signals, categoryId) {
         name: sig.name || sig.id || ('Signal' + (idx + 1)),
         dataType: sig.dataType || 'Bool',
         varType: sig.varType || 'Var',
-        comment: sig.comment || 'Auto-synced from Global Variables'
+        comment: sig.comment || 'Synced Unit Station signal'
       };
     })
   });
@@ -98,36 +98,12 @@ function syncStructDataFromProjectData() {
   const excelVars = project.excelVars || [];
   const unitConfigs = project.unitConfig || {};
 
-  if (
-    excelVars.some(function(v) { return v && v.format === 'Cylinder'; }) &&
-    !(project.devices || []).some(function(d) { return d && d.name === 'Cylinder'; }) &&
-    typeof ucEnsureCylinderDeviceType === 'function'
-  ) {
-    ucEnsureCylinderDeviceType();
-    changed = true;
-  }
+  // Do not auto-create device Struct Data types from imported rows.
+  // Device schemas are user-owned; codegen only reads the signals the user defined.
 
   if (Object.keys(unitConfigs).length || excelVars.some(function(v) { return v && v.format === 'Unit Station'; })) {
     changed = ensureStructDataType('Unit Station', PROJECT_UNIT_STRUCT_SIGNALS, 'cat-other') || changed;
   }
-
-  excelVars.forEach(function(v) {
-    const formatName = (v && v.format || '').trim();
-    if (!formatName || formatName === 'Cylinder') return;
-    if ((project.devices || []).some(function(d) { return d && d.name === formatName; })) return;
-
-    const signalIds = Object.keys((v && v.signalAddresses) || {});
-    const genericSignals = signalIds.map(function(sigId) {
-      return {
-        id: sigId,
-        name: sigId,
-        dataType: 'Bool',
-        varType: 'Var',
-        comment: 'Auto-synced from Global Variables'
-      };
-    });
-    changed = ensureStructDataType(formatName, genericSignals, 'cat-other') || changed;
-  });
 
   return changed;
 }
