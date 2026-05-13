@@ -268,38 +268,6 @@
     </div>
     <div id="struct-panel-body" style="flex:1;overflow:auto;padding:14px;"></div>
   </div>
-
-  <!-- Variable Table Panel -->
-  <div class="vartable-panel" id="vartable-panel">
-    <div class="vt-resize" id="vt-resize"></div>
-    <div class="vt-head" onclick="toggleVarTable()">
-      <span class="vt-head-title">⊞ VARIABLE TABLE</span>
-      <div class="vt-head-actions" onclick="event.stopPropagation()">
-        <span class="vt-count" style="font-size:9px;color:var(--text3);margin-right:4px;">0 vars</span>
-        <input class="vt-search" id="vt-search" placeholder="🔍 Filter..." oninput="renderVarTable()" style="width:120px;">
-        <button class="vt-btn g" onclick="vtAddRow()">+ Add</button>
-        <button class="vt-btn" onclick="vtImportCSV()" title="Import CSV">↑ CSV</button>
-        <button class="vt-btn" onclick="vtExportCSV()" title="Export CSV">↓ CSV</button>
-        <button class="vt-btn" onclick="showExcelImportModal()" title="Import Excel/CSV dữ liệu thiết bị" style="border-color:#34d399;color:#34d399;">📥 Excel</button>
-        <button class="vt-btn r" id="vt-del-btn" onclick="vtDeleteSelected()" disabled title="Delete selected">⊘ Del</button>
-        <button class="pin-btn" id="pin-vt" onclick="toggleVarTable()" title="Collapse">📌</button>
-      </div>
-    </div>
-    <div class="vt-body" id="vt-body">
-      <table class="var-table" id="var-table">
-        <thead>
-          <tr>
-            <th style="width:28px;">#</th>
-            <th style="width:160px;">LABEL</th>
-            <th style="width:120px;">DATA FORMAT</th>
-            <th style="width:140px;">ADDRESS</th>
-            <th>COMMENT</th>
-          </tr>
-        </thead>
-        <tbody id="vt-tbody"></tbody>
-      </table>
-    </div>
-  </div>
 </div>
 
 <!-- Right Panel -->
@@ -636,9 +604,7 @@
 <script src="js/editor/tables.js"></script>
 <script src="js/editor/vars.js"></script>
 <script src="js/editor/excel-import.js"></script>
-<script src="js/codegen/kv-generator.js"></script>
 <script src="js/codegen/sequence.js"></script>
-<script src="js/codegen/st-generator.js"></script>
 <script src="js/codegen/templates-bundle.js"></script>
 <script src="js/codegen/unit-config.js"></script>
 <script src="js/codegen/template-manager.js"></script>

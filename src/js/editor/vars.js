@@ -32,6 +32,9 @@ const GVT_UNIT_SIGNALS = [
   {id:'outHomed',       name:'HomeDone',   dataType:'Bool', varType:'Output', path:'io.outHomed'},
 ];
 
+// Danh sách kiểu primitive phổ thông
+const GVT_PRIMITIVE_TYPES = ['BOOL','INT','DINT','UDINT','UINT','WORD','DWORD','BYTE','REAL','LREAL','STRING','TIME'];
+
 function gvtGetEntries() {
   if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
   const imported = ((project.variables && project.variables.imported) || []).map(function(v, idx) {
@@ -136,6 +139,69 @@ function gvtGetExcelSignalAddress(v, sig) {
   return '';
 }
 
+// ── Compatibility: getVars() dùng bởi actions.js / updateVarDatalist ──
+function getVars() {
+  if (typeof ensureProjectVariables === 'function') ensureProjectVariables();
+  const imported = (project.variables && project.variables.imported) || [];
+  const user     = (project.variables && project.variables.user)     || [];
+  return imported.concat(user);
+}
+
+// ── Tạo <select> cho cột Type (primitive + struct/device) ──
+function gvtMakeTypeSelect(entry, v) {
+  const currentFormat = v.format || v.dataType || 'BOOL';
+  const structDevices = (project.devices || []).map(function(d) { return d.name; });
+  const isPrimitive   = GVT_PRIMITIVE_TYPES.includes(currentFormat.toUpperCase());
+
+  const sel = document.createElement('select');
+  sel.className = 'vt-cell';
+  sel.style.cssText = 'color:var(--cyan);background:var(--s1);border:none;width:100%;cursor:pointer;';
+  sel.title = currentFormat;
+
+  // Group 1: Primitive
+  const grpPrim = document.createElement('optgroup');
+  grpPrim.label = 'Primitive';
+  GVT_PRIMITIVE_TYPES.forEach(function(t) {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    if (t === currentFormat.toUpperCase()) opt.selected = true;
+    grpPrim.appendChild(opt);
+  });
+  sel.appendChild(grpPrim);
+
+  // Group 2: Struct / Device
+  const grpStruct = document.createElement('optgroup');
+  grpStruct.label = 'Struct / Device';
+  const structOptions = structDevices.length
+    ? structDevices
+    : ['Cylinder', 'Unit Station', 'Struct Data'];
+
+  structOptions.forEach(function(t) {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    if (t === currentFormat) opt.selected = true;
+    grpStruct.appendChild(opt);
+  });
+
+  // Nếu currentFormat là struct nhưng không nằm trong danh sách → thêm vào
+  if (!isPrimitive && !structOptions.includes(currentFormat)) {
+    const opt = document.createElement('option');
+    opt.value = currentFormat;
+    opt.textContent = currentFormat;
+    opt.selected = true;
+    grpStruct.appendChild(opt);
+  }
+  sel.appendChild(grpStruct);
+
+  sel.addEventListener('change', function() {
+    gvtEditVar(entry.source, String(entry.key), 'format', this.value);
+  });
+
+  return sel;
+}
+
 function renderGlobalVarTable() {
   const tbody = document.getElementById('gvt-tbody');
   if(!tbody) return;
@@ -177,40 +243,66 @@ function renderGlobalVarTable() {
     const tr=document.createElement('tr');
     tr.className = sigList.length ? 'vt-dev-instance' : '';
 
+    // col 1: Delete button
     const tdDel=document.createElement('td');
     tdDel.className='vt-rownum';
     tdDel.innerHTML=`<button onclick="gvtDeleteVar('${entry.source}', '${String(entry.key).replace(/'/g, '\\&#39;')}')" title="Xóa" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px;padding:0 3px;">✕</button>`;
     tr.appendChild(tdDel);
 
+    // col 2: Label input
     const tdL=document.createElement('td');
     tdL.innerHTML=`<input class="vt-cell lbl" value="${esc2(v.label||'')}" onchange="gvtEditVar('${entry.source}','${entry.key}','label',this.value)">`;
     tr.appendChild(tdL);
 
-    const tdF=document.createElement('td');
-    tdF.innerHTML=`<input class="vt-cell" value="${esc2(v.format||v.dataType||'BOOL')}" onchange="gvtEditVar('${entry.source}','${entry.key}','format',this.value)" style="color:var(--cyan);">`;
+    // col 3: Type — select box (primitive + struct/device)
+    const tdF = document.createElement('td');
+    tdF.appendChild(gvtMakeTypeSelect(entry, v));
     tr.appendChild(tdF);
 
+    // col 4: Toggle expand / Address input (primitive)
     const tdTog=document.createElement('td');
     tdTog.style.cssText='padding:0 8px;font-size:9px;color:var(--cyan);cursor:pointer;user-select:none;';
-    tdTog.innerHTML=`<span style="display:inline-flex;align-items:center;gap:4px;">
-      <span>${isExpanded?'▾':'▸'}</span>
-      <span style="opacity:.7;">${sigList.length} address${sigList.length!==1?'es':''}</span>
-    </span>`;
-    tdTog.addEventListener('click',function(){
-      if((entry.source === 'imported' || entry.source === 'user') && project.variables && project.variables[entry.bucket] && project.variables[entry.bucket][entry.key]) {
-        project.variables[entry.bucket][entry.key]._sigExpanded = !isExpanded;
-      } else if(entry.source === 'excel' && project.excelVars[entry.key]) {
-        project.excelVars[entry.key]._sigExpanded = !isExpanded;
-      } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
-        project.unitConfig[entry.key]._sigExpanded = !isExpanded;
-      }
-      saveProject(); renderGlobalVarTable();
-    });
-    if(!sigList.length) {
+
+    if(sigList.length) {
+      // Có signals → nút toggle expand
+      tdTog.innerHTML=`<span style="display:inline-flex;align-items:center;gap:4px;">
+        <span>${isExpanded?'▾':'▸'}</span>
+        <span style="opacity:.7;">${sigList.length} address${sigList.length!==1?'es':''}</span>
+      </span>`;
+      tdTog.addEventListener('click',function(){
+        if((entry.source === 'imported' || entry.source === 'user') && project.variables && project.variables[entry.bucket] && project.variables[entry.bucket][entry.key]) {
+          project.variables[entry.bucket][entry.key]._sigExpanded = !isExpanded;
+        } else if(entry.source === 'excel' && project.excelVars[entry.key]) {
+          project.excelVars[entry.key]._sigExpanded = !isExpanded;
+        } else if(entry.source === 'unit' && project.unitConfig && project.unitConfig[entry.key]) {
+          project.unitConfig[entry.key]._sigExpanded = !isExpanded;
+        }
+        saveProject(); renderGlobalVarTable();
+      });
+    } else {
+      // Không có signals → ô nhập địa chỉ trực tiếp
+      // Dùng createElement để tránh re-render mất focus khi click
       tdTog.style.cssText = '';
       tdTog.onclick = null;
-      tdTog.innerHTML=`<input class="vt-cell addr" value="${esc2(v.address||'')}" placeholder="%MX0.0" onchange="gvtEditVar('${entry.source}','${entry.key}','address',this.value)">`;
+
+      const addrInput = document.createElement('input');
+      addrInput.type = 'text';
+      addrInput.className = 'vt-cell addr';
+      addrInput.value = v.address || '';
+      addrInput.placeholder = '%MX0.0';
+
+      // Chỉ lưu khi blur / Enter — không re-render giữa chừng
+      addrInput.addEventListener('change', function() {
+        gvtEditVar(entry.source, String(entry.key), 'address', this.value);
+      });
+      // Ngăn propagation khi đang gõ (tránh trigger event ngoài)
+      addrInput.addEventListener('input', function(e) {
+        e.stopPropagation();
+      });
+
+      tdTog.appendChild(addrInput);
     }
+
     tr.appendChild(tdTog);
     tbody.appendChild(tr);
 
@@ -242,7 +334,7 @@ function renderGlobalVarTable() {
           <span class="sdcol-io ${vc}" style="margin-left:3px;">${vs}</span>`;
         subTr.appendChild(tdSType);
 
-        // col 4: Address input
+        // col 4: Address input (signal sub-row)
         const tdSAddr=document.createElement('td');
         const addrInp=document.createElement('input');
         addrInp.type='text';
@@ -381,10 +473,8 @@ window.addEventListener('load', ()=>{
   init();
   initVtResize();
   // Restore var table open state
-  const vts=localStorage.getItem('gf2-vt-open');
-  if(vts==='0'){ vtOpen=true; toggleVarTable(); }
+  // (local var table removed)
   setTimeout(fitView, 200);
-  renderVarTable();
 });
 document.getElementById('modal-input').addEventListener('keydown', e=>{ if(e.key==='Enter') confirmRename(); });
 

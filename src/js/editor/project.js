@@ -139,9 +139,6 @@ function openTab(id) {
   renderTree();
   applyView();
   render();
-  renderVarTable();
-  vtSelRows.clear();
-  updateVtDelBtn();
 }
 
 function closeTab(id, e) {
@@ -154,7 +151,7 @@ function closeTab(id, e) {
       activeDiagramId=null;
       _showCanvas();
       state={steps:[],transitions:[],parallels:[],connections:[],vars:[]};
-      render(); renderTabs(); renderVarTable();
+      render(); renderTabs();
     }
   } else renderTabs();
 }
