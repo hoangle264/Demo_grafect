@@ -50,63 +50,88 @@ function renderTree() {
   if (!project.units) project.units = [];
   if (!project.devices) project.devices = [];
 
-  // ── Project name header ──
+  // Project root.
   const editProjectRow = document.createElement('div');
   editProjectRow.className = 'tree-machine';
   editProjectRow.innerHTML = `
-    <span style="font-size:11px;">📁</span>
+    <span style="font-size:11px;">▣</span>
     <span class="tree-machine-name">${esc2(project.name)}</span>
     <button class="tree-machine-edit" onclick="renameProject()" title="Edit project">✎</button>`;
   body.appendChild(editProjectRow);
 
-  const cfgWrap = document.createElement('div');
-  cfgWrap.className = 'tree-devices-section';
-  cfgWrap.innerHTML = `
-    <div class="tree-devices-head">
-      <span style="font-size:11px;margin:0 4px;">⚙</span>
-      <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">CONFIGURE</span>
+  // PLC branch.
+  const plcWrap = document.createElement('div');
+  plcWrap.className = 'tree-section tree-plc-section';
+  plcWrap.innerHTML = `
+    <div class="tree-section-head">
+      <span class="tree-unit-toggle open">▾</span>
+      <span class="tree-section-icon">▣</span>
+      <span class="tree-section-name">PLC</span>
     </div>
-    <div class="tree-devices-body">
-      <div class="tree-item" style="padding-left:24px;" onclick="toast('PLC model configuration is not wired yet')">
-        <span class="tree-item-icon">▣</span><span class="tree-item-name">PLC model</span>
+    <div class="tree-section-body">
+      <div class="tree-leaf" onclick="toast('PLC model configuration is not wired yet')">
+        <span class="tree-leaf-icon plc">PLC</span>
+        <span class="tree-leaf-name">${esc2(project.plcName || project.machineName || 'PLCName')}</span>
       </div>
     </div>`;
-  body.appendChild(cfgWrap);
+  body.appendChild(plcWrap);
 
-  // ── Variables (global Excel/imported vars) ──
+  const devSection = makeDevicesSection();
+  devSection.classList.add('tree-section-nested');
+  plcWrap.querySelector('.tree-section-body').appendChild(devSection);
+
+  // Machine branch.
+  const machineWrap = document.createElement('div');
+  machineWrap.className = 'tree-section tree-machine-section';
+  machineWrap.innerHTML = `
+    <div class="tree-section-head">
+      <span class="tree-unit-toggle open">▾</span>
+      <span class="tree-section-icon">▤</span>
+      <span class="tree-section-name">Machine</span>
+    </div>`;
+  const machineBody = document.createElement('div');
+  machineBody.className = 'tree-section-body';
+
   const varGroups = typeof ensureProjectVariables === 'function' ? ensureProjectVariables() : (project.variables || {imported:[], user:[]});
   const varsCount = ((varGroups.imported||[]).length) + ((varGroups.user||[]).length) + Object.keys(project.unitConfig||{}).length;
   const varsItem = document.createElement('div');
-  varsItem.className = 'tree-item';
-  varsItem.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 10px 5px 14px;cursor:pointer;font-size:10px;color:var(--text2);border-top:1px solid var(--border);';
-  varsItem.innerHTML = `<span style="font-size:11px;">📋</span><span style="flex:1;">Variables</span><span style="font-size:9px;color:var(--text3);background:var(--s2);padding:1px 5px;border-radius:8px;">${varsCount}</span>`;
-  varsItem.addEventListener('mouseenter', ()=>{ varsItem.style.background='var(--s2)'; });
-  varsItem.addEventListener('mouseleave', ()=>{ varsItem.style.background=''; });
+  varsItem.className = 'tree-leaf';
+  varsItem.innerHTML = `<span class="tree-leaf-icon vars">VAR</span><span class="tree-leaf-name">Global Variables</span><span class="tree-count-badge">${varsCount}</span>`;
   varsItem.addEventListener('click', ()=>openVarsTab());
-  body.appendChild(varsItem);
+  machineBody.appendChild(varsItem);
 
-  // Structure section (global struct type declarations)
-  const devSection = makeDevicesSection();
-  body.appendChild(devSection);
+  const ioItem = document.createElement('div');
+  ioItem.className = 'tree-leaf';
+  ioItem.innerHTML = `<span class="tree-leaf-icon io">IO</span><span class="tree-leaf-name">IO Mapping</span>`;
+  ioItem.addEventListener('click', ()=>openVarsTab());
+  machineBody.appendChild(ioItem);
+  machineWrap.appendChild(machineBody);
+  body.appendChild(machineWrap);
 
-  // ── Units ──
-  project.units.forEach(u=>{
-    const unitEl = makeUnitItem(u);
-    body.appendChild(unitEl);
-  });
+  // Units branch.
+  const unitsWrap = document.createElement('div');
+  unitsWrap.className = 'tree-section tree-units-section';
+  unitsWrap.innerHTML = `
+    <div class="tree-section-head">
+      <span class="tree-unit-toggle open">▾</span>
+      <span class="tree-section-icon">▥</span>
+      <span class="tree-section-name">Units</span>
+      <button class="tree-mode-add" onclick="addUnit();event.stopPropagation()" title="Add unit">+</button>
+    </div>`;
+  const unitsBody = document.createElement('div');
+  unitsBody.className = 'tree-section-body';
+  project.units.forEach(u=>unitsBody.appendChild(makeUnitItem(u)));
+  unitsWrap.appendChild(unitsBody);
+  body.appendChild(unitsWrap);
 
-  // ── Orphan diagrams (no unit) — legacy or unassigned ──
   const orphans = project.diagrams.filter(d=>!d.unitId && d.mode!=='Drivers');
   if(orphans.length){
     const orphanHead = document.createElement('div');
     orphanHead.style.cssText='padding:4px 8px;font-size:8px;color:var(--text3);letter-spacing:1px;border-top:1px solid var(--border);';
-    orphanHead.textContent='─ UNASSIGNED';
+    orphanHead.textContent='- UNASSIGNED';
     body.appendChild(orphanHead);
     orphans.forEach(d=>body.appendChild(makeDiagItem(d)));
   }
-
-  // ── Drivers section (ActiveDevices — mode='Drivers') ──
-  body.appendChild(makeDriversSection());
 
   const projectNameEl = document.getElementById('project-name-display');
   if (projectNameEl) projectNameEl.textContent = project.name;
@@ -135,32 +160,14 @@ function makeUnitItem(u) {
   const children = document.createElement('div');
   children.className = 'tree-unit-children' + (isOpen?'':' hidden');
 
-  // Group diagrams theo mode — gọi makeModeGroup() cho mỗi mode có ít nhất 1 diagram
+  // New tree keeps programs directly under the unit; mode stays in Properties.
   if(!diagsInUnit.length){
     const empty = document.createElement('div');
-    empty.style.cssText='padding:3px 8px 3px 18px;font-size:9px;color:var(--text3);font-style:italic;';
-    empty.textContent='no diagrams';
+    empty.style.cssText='padding:3px 8px 3px 34px;font-size:9px;color:var(--text3);font-style:italic;';
+    empty.textContent='no programs';
     children.appendChild(empty);
   } else {
-    const UNIT_MODES = [
-      {key:'Auto',   icon:'⚙'},
-      {key:'Origin', icon:'⟳'},
-      {key:'Manual', icon:'🖐'},
-      {key:'Error',  icon:'⚠'},
-    ];
-    // Diagrams có mode thuộc danh sách UNIT_MODES → nhóm vào mode group
-    const groupedModeKeys = new Set();
-    UNIT_MODES.forEach(m => {
-      const hasDiags = diagsInUnit.some(d=>d.mode===m.key);
-      if(hasDiags){
-        groupedModeKeys.add(m.key);
-        children.appendChild(makeModeGroup(u, m));
-      }
-    });
-    // Diagrams có mode không thuộc UNIT_MODES (custom hoặc legacy) → flat list ở cuối
-    diagsInUnit.filter(d=>!groupedModeKeys.has(d.mode)).forEach(d=>{
-      children.appendChild(makeDiagItem(d));
-    });
+    diagsInUnit.forEach(d=>children.appendChild(makeDiagItem(d)));
   }
 
   wrap.appendChild(head); wrap.appendChild(children);
@@ -515,12 +522,14 @@ function makeDiagItem(d) {
   item.dataset.id = d.id; item.dataset.type = 'diagram';
 
   const MODE_COLORS = {Auto:'#39d353',Origin:'#f5a623',Manual:'#4fa3e3',Error:'#e35a4f',Drivers:'#a78bfa'};
+  const MODE_LETTERS = {Auto:'A',Origin:'O',Manual:'M',Error:'E',Drivers:'D'};
   const modeColor = MODE_COLORS[d.mode]||'var(--text3)';
+  const modeLetter = MODE_LETTERS[d.mode]||'P';
   const typeLbl = d.diagramType==='SubRoutine'?'SR':'M';
   const typeColor = d.diagramType==='SubRoutine'?'var(--blue)':'var(--amber)';
 
   item.innerHTML = `
-    <span class="tree-item-icon" style="color:${modeColor};font-size:8px;">⬤</span>
+    <span class="tree-item-icon tree-program-icon" style="color:${modeColor};border-color:${modeColor};background:color-mix(in srgb, ${modeColor} 14%, transparent);" title="${esc2(d.mode||'Program')}">${modeLetter}</span>
     <span class="tree-item-name">${esc2(d.name)}</span>
     <span style="font-size:7px;padding:1px 3px;border:1px solid ${typeColor};color:${typeColor};border-radius:2px;flex-shrink:0;">${typeLbl}</span>
     <div class="tree-item-actions">

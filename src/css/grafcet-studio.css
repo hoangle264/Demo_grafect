@@ -175,6 +175,7 @@ header{height:36px;background:var(--ide-activity);border-bottom:1px solid var(--
 .tree-item.active{background:var(--ide-selected);border-left-color:var(--blue);}
 .tree-item.modified .tree-item-name::after{content:' ●';color:var(--amber);font-size:10px;}
 .tree-item-icon{font-size:12px;flex-shrink:0;opacity:.8;}
+.tree-program-icon{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid;border-radius:2px;font-size:8px!important;font-family:'JetBrains Mono',monospace;font-weight:700;opacity:1;}
 .tree-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
 .tree-item.active .tree-item-name{color:#ffffff;}
 .tree-item-actions{display:flex;gap:2px;opacity:0;transition:.1s;}
@@ -195,6 +196,25 @@ header{height:36px;background:var(--ide-activity);border-bottom:1px solid var(--
 .tree-machine-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tree-machine-edit{background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;padding:0;}
 .tree-machine-edit:hover{color:var(--amber);}
+
+
+.tree-section{border-bottom:1px solid rgba(255,255,255,.04);}
+.tree-section-head{display:flex;align-items:center;gap:0;padding:4px 8px;cursor:pointer;font-size:13px;transition:.1s;border-left:2px solid transparent;color:var(--text2);background:transparent;}
+.tree-section-head:hover{background:var(--ide-hover);}
+.tree-section-icon{margin:0 6px;font-size:12px;color:var(--amber);}
+.tree-section-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+.tree-section-body{padding-left:16px;border-left:1px solid rgba(255,255,255,.06);margin-left:16px;}
+.tree-section-nested{margin-left:-16px;border-top:none;}
+.tree-section-nested .tree-devices-head{padding-left:8px;background:transparent;border-bottom:none;}
+.tree-section-nested .tree-devices-head:hover{background:rgba(34,211,238,.08);}
+.tree-leaf{display:flex;align-items:center;gap:6px;padding:3px 8px 3px 8px;cursor:pointer;font-size:13px;transition:.1s;border-left:2px solid transparent;position:relative;color:var(--text2);}
+.tree-leaf:hover{background:var(--ide-hover);}
+.tree-leaf-icon{width:18px;min-width:18px;height:14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border2);border-radius:2px;font-size:7px;font-family:'JetBrains Mono',monospace;letter-spacing:.2px;}
+.tree-leaf-icon.plc{color:var(--amber);border-color:rgba(245,166,35,.45);background:rgba(245,166,35,.08);}
+.tree-leaf-icon.vars{color:var(--green);border-color:rgba(57,211,83,.4);background:rgba(57,211,83,.08);}
+.tree-leaf-icon.io{color:var(--cyan);border-color:rgba(34,211,238,.4);background:rgba(34,211,238,.08);}
+.tree-leaf-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+.tree-count-badge{font-size:9px;color:var(--text3);background:var(--s2);padding:1px 5px;border-radius:8px;}
 
 .tree-unit{position:relative;}
 .tree-unit-head{

@@ -73,18 +73,16 @@ Thứ tự tải script phải bám đúng `src/index.html`. Thứ tự hiện t
 14. `js/editor/tables.js`
 15. `js/editor/vars.js`
 16. `js/editor/excel-import.js`
-17. `js/codegen/kv-generator.js`
-18. `js/codegen/sequence.js`
-19. `js/codegen/st-generator.js`
-20. `js/codegen/templates-bundle.js`
-21. `js/codegen/unit-config.js`
-22. `js/codegen/template-manager.js`
-23. `js/codegen/runtime-metadata.js`
-24. `js/codegen/runtime-resolver.js`
-25. `js/codegen/runtime-planner.js`
-26. `js/codegen/output-binding-planner.js`
-27. `js/codegen/runtime-debug.js`
-28. `js/codegen/modal.js`
+17. `js/codegen/sequence.js`
+18. `js/codegen/templates-bundle.js`
+19. `js/codegen/unit-config.js`
+20. `js/codegen/template-manager.js`
+21. `js/codegen/runtime-metadata.js`
+22. `js/codegen/runtime-resolver.js`
+23. `js/codegen/runtime-planner.js`
+24. `js/codegen/output-binding-planner.js`
+25. `js/codegen/runtime-debug.js`
+26. `js/codegen/modal.js`
 
 Không được giả định load order kiểu `constants -> utils -> store`. Hãy bám đúng file HTML hiện có.
 
