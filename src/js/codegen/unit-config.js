@@ -612,6 +612,10 @@ function ucGetFeedbackSignalCandidates(dirName) {
   return dirName ? [dirName + '_SNS'] : [];
 }
 
+function ucDirFromCommand(command) {
+  return command && command.driveSignal ? ucDirFromSigName(command.driveSignal) : '';
+}
+
 function ucFindFirstSignalAddress(signalMap, candidates) {
   return (candidates || []).map(function(name) {
     return signalMap && signalMap[name] || '';
@@ -1275,11 +1279,15 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         });
       });
 
+      const cylinderCommands = ucGetCylinderCommands(cy);
+      const commandDirA = ucDirFromCommand(cylinderCommands.extend);
+      const commandDirB = ucDirFromCommand(cylinderCommands.retract);
+
       const dirBCandidates = [...originCyDirs];
       const dirACandidates = [...stationCyDirs].filter(function(d) { return !originCyDirs.has(d); });
 
-      let dirAName = dirACandidates[0] || dirBCandidates[1] || (cyActions.length ? ucDirFromSigName(cyActions[0].act.sigName) : 'DirA');
-      let dirBName = dirBCandidates[0] || '';
+      let dirAName = dirACandidates[0] || dirBCandidates[1] || commandDirA || (cyActions.length ? ucDirFromSigName(cyActions[0].act.sigName) : 'DirA');
+      let dirBName = dirBCandidates[0] || commandDirB || '';
       if (!dirACandidates.length && dirBCandidates.length >= 2) {
         dirAName = dirBCandidates[1];
         dirBName = dirBCandidates[0];
@@ -1429,7 +1437,8 @@ function cgUCBuildContext(unitConfig, selectedUnitId, options) {
         LSH:          sensorDirA,
         LSL:          sensorDirB,
         State:        varTableSignals.State || cy.State || '',
-        commands:     cy.commands || {},
+        hasStepOutput: cyActions.length > 0,
+        commands:     cylinderCommands,
         dirAName:     dirAName,
         dirBName:     dirBName,
         fbDirAName:   ucGetFeedbackSignalCandidates(dirAName)[0] || dirAName,
@@ -1631,7 +1640,7 @@ function cgUCGenerateManual(ctx) {
   //   ...
   //   MPP
   //   ANP outDirBN-1; RES sysManFlagN-1
-  const cysWithOut = cys.filter(function(cy) { return cy.outDirA || cy.outDirB; });
+  const cysWithOut = cys.filter(function(cy) { return cy.hasStepOutput && (cy.outDirA || cy.outDirB); });
   if (cysWithOut.length > 0) {
     L.push(`LDB  ${ucPad(u.flagManual)}; Manual`);
     if (cysWithOut.length === 1) {
@@ -2133,7 +2142,7 @@ function cgUCBuildTemplateContext(ctx) {
 
   // ── cysWithOut: cylinders có địa chỉ output, bổ sung stack instructions ──
   const cysWithOut = cylinders.filter(function(cy) {
-    return cy.outDirA || cy.outDirB;
+    return cy.hasStepOutput && (cy.outDirA || cy.outDirB);
   });
   const cysWithOutEnriched = cysWithOut.map(function(cy, i) {
     const isLast = i === cysWithOut.length - 1;

@@ -43,6 +43,37 @@ function renderTabs() {
   bar.appendChild(addBtn);
 }
 
+function treeIcon(name, cls='') {
+  const icons = {
+    chevron: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+    folder: '<svg viewBox="0 0 24 24"><path d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5z"/></svg>',
+    plc: '<svg viewBox="0 0 24 24"><path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>',
+    variables: '<svg viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>',
+    io: '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M7 4v6m10-6v6M9 14v6m6-6v6"/></svg>',
+    structure: '<svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>',
+    program: '<svg viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>'
+  };
+  return `<span class="tree-svg ${cls}">${icons[name] || icons.folder}</span>`;
+}
+
+function treeSectionOpen(key) {
+  return localStorage.getItem('gf2-tree-section-open-' + key) !== '0';
+}
+
+function bindTreeSectionToggle(section, key) {
+  const head = section.querySelector('.tree-section-head');
+  const body = section.querySelector('.tree-section-body');
+  const toggle = section.querySelector('.tree-unit-toggle');
+  if (!head || !body || !toggle) return;
+  head.addEventListener('click', e => {
+    if (e.target.closest('button')) return;
+    const hidden = body.classList.toggle('hidden');
+    toggle.classList.toggle('closed', hidden);
+    toggle.classList.toggle('open', !hidden);
+    localStorage.setItem('gf2-tree-section-open-' + key, hidden ? '0' : '1');
+  });
+}
+
 function renderTree() {
   const body = document.getElementById('tree-body');
   body.innerHTML = '';
@@ -54,7 +85,7 @@ function renderTree() {
   const editProjectRow = document.createElement('div');
   editProjectRow.className = 'tree-machine';
   editProjectRow.innerHTML = `
-    <span style="font-size:11px;">▣</span>
+    ${treeIcon('folder','root')}
     <span class="tree-machine-name">${esc2(project.name)}</span>
     <button class="tree-machine-edit" onclick="renameProject()" title="Edit project">✎</button>`;
   body.appendChild(editProjectRow);
@@ -62,66 +93,73 @@ function renderTree() {
   // PLC branch.
   const plcWrap = document.createElement('div');
   plcWrap.className = 'tree-section tree-plc-section';
+  const plcOpen = treeSectionOpen('plc');
   plcWrap.innerHTML = `
     <div class="tree-section-head">
-      <span class="tree-unit-toggle open">▾</span>
-      <span class="tree-section-icon">▣</span>
+      <span class="tree-unit-toggle ${plcOpen?'open':'closed'}">${treeIcon('chevron')}</span>
+      ${treeIcon('folder','folder')}
       <span class="tree-section-name">PLC</span>
     </div>
-    <div class="tree-section-body">
-      <div class="tree-leaf" onclick="toast('PLC model configuration is not wired yet')">
-        <span class="tree-leaf-icon plc">PLC</span>
-        <span class="tree-leaf-name">${esc2(project.plcName || project.machineName || 'PLCName')}</span>
+    <div class="tree-section-body${plcOpen?'':' hidden'}">
+      <div class="tree-leaf" onclick="openPlcConfigModal()">
+        ${treeIcon('plc','plc')}
+        <span class="tree-leaf-name">${esc2(project.plcConfig?.name || project.plcName || project.machineName || 'Model PLC')}</span>
       </div>
     </div>`;
+  bindTreeSectionToggle(plcWrap, 'plc');
   body.appendChild(plcWrap);
-
-  const devSection = makeDevicesSection();
-  devSection.classList.add('tree-section-nested');
-  plcWrap.querySelector('.tree-section-body').appendChild(devSection);
 
   // Machine branch.
   const machineWrap = document.createElement('div');
   machineWrap.className = 'tree-section tree-machine-section';
+  const machineOpen = treeSectionOpen('machine');
   machineWrap.innerHTML = `
     <div class="tree-section-head">
-      <span class="tree-unit-toggle open">▾</span>
-      <span class="tree-section-icon">▤</span>
+      <span class="tree-unit-toggle ${machineOpen?'open':'closed'}">${treeIcon('chevron')}</span>
+      ${treeIcon('folder','folder')}
       <span class="tree-section-name">Machine</span>
     </div>`;
   const machineBody = document.createElement('div');
-  machineBody.className = 'tree-section-body';
+  machineBody.className = 'tree-section-body' + (machineOpen?'':' hidden');
 
   const varGroups = typeof ensureProjectVariables === 'function' ? ensureProjectVariables() : (project.variables || {imported:[], user:[]});
   const varsCount = ((varGroups.imported||[]).length) + ((varGroups.user||[]).length) + Object.keys(project.unitConfig||{}).length;
   const varsItem = document.createElement('div');
   varsItem.className = 'tree-leaf';
-  varsItem.innerHTML = `<span class="tree-leaf-icon vars">VAR</span><span class="tree-leaf-name">Global Variables</span><span class="tree-count-badge">${varsCount}</span>`;
+  varsItem.innerHTML = `${treeIcon('variables','vars')}<span class="tree-leaf-name">Global Variables</span><span class="tree-count-badge">${varsCount}</span>`;
   varsItem.addEventListener('click', ()=>openVarsTab());
   machineBody.appendChild(varsItem);
 
   const ioItem = document.createElement('div');
   ioItem.className = 'tree-leaf';
-  ioItem.innerHTML = `<span class="tree-leaf-icon io">IO</span><span class="tree-leaf-name">IO Mapping</span>`;
+  ioItem.innerHTML = `${treeIcon('io','io')}<span class="tree-leaf-name">IO Mapping</span>`;
   ioItem.addEventListener('click', ()=>openVarsTab());
   machineBody.appendChild(ioItem);
+
+  const devSection = makeDevicesSection();
+  devSection.classList.add('tree-section-nested');
+  machineBody.appendChild(devSection);
+
   machineWrap.appendChild(machineBody);
+  bindTreeSectionToggle(machineWrap, 'machine');
   body.appendChild(machineWrap);
 
   // Units branch.
   const unitsWrap = document.createElement('div');
   unitsWrap.className = 'tree-section tree-units-section';
+  const unitsOpen = treeSectionOpen('units');
   unitsWrap.innerHTML = `
     <div class="tree-section-head">
-      <span class="tree-unit-toggle open">▾</span>
-      <span class="tree-section-icon">▥</span>
+      <span class="tree-unit-toggle ${unitsOpen?'open':'closed'}">${treeIcon('chevron')}</span>
+      ${treeIcon('folder','folder')}
       <span class="tree-section-name">Units</span>
       <button class="tree-mode-add" onclick="addUnit();event.stopPropagation()" title="Add unit">+</button>
     </div>`;
   const unitsBody = document.createElement('div');
-  unitsBody.className = 'tree-section-body';
+  unitsBody.className = 'tree-section-body' + (unitsOpen?'':' hidden');
   project.units.forEach(u=>unitsBody.appendChild(makeUnitItem(u)));
   unitsWrap.appendChild(unitsBody);
+  bindTreeSectionToggle(unitsWrap, 'units');
   body.appendChild(unitsWrap);
 
   const orphans = project.diagrams.filter(d=>!d.unitId && d.mode!=='Drivers');
@@ -147,8 +185,8 @@ function makeUnitItem(u) {
   const head = document.createElement('div');
   head.className = 'tree-unit-head';
   head.innerHTML = `
-    <span class="tree-unit-toggle ${isOpen?'open':'closed'}">▾</span>
-    <span class="tree-unit-icon">📦</span>
+    <span class="tree-unit-toggle ${isOpen?'open':'closed'}">${treeIcon('chevron')}</span>
+    ${treeIcon('folder','unit')}
     <span class="tree-unit-name">${esc2(u.name)}</span>
     <div class="tree-unit-actions">
       <button class="tree-unit-btn" onclick="addDiagramInUnit('${u.id}','Auto');event.stopPropagation()" title="Add diagram">+</button>
@@ -277,10 +315,10 @@ function makeDevicesSection() {
   head.className = 'tree-devices-head';
   const totalTypes = (project.devices||[]).length;
   head.innerHTML = `
-    <span class="tree-dev-toggle ${isOpen?'':'closed'}">▾</span>
-    <span style="font-size:11px;margin:0 4px;">🔩</span>
-    <span style="flex:1;font-size:9px;letter-spacing:1.5px;font-family:'Orbitron',monospace;">STRUCTURE</span>
-    <span style="font-size:8px;color:var(--text3);margin-right:4px;">${totalTypes}</span>
+    <span class="tree-dev-toggle ${isOpen?'':'closed'}">${treeIcon('chevron')}</span>
+    ${treeIcon('structure','structure')}
+    <span class="tree-dev-title">Structure</span>
+    <span class="tree-dev-count">${totalTypes}</span>
     <button class="tree-dev-add-btn" onclick="openDeviceTypeModal(null);event.stopPropagation()" title="Add Struct Data">⊕</button>`;
 
   const body = document.createElement('div');
@@ -324,10 +362,10 @@ function makeDevTypeRow(dev) {
   const head = document.createElement('div');
   head.className = 'tree-dev-type-head';
   head.innerHTML = `
-    <span class="tree-dev-toggle ${isOpen?'':'closed'}">▾</span>
-    <span style="font-size:9px;color:var(--cyan);margin:0 3px;">❖</span>
+    <span class="tree-dev-toggle ${isOpen?'':'closed'}">${treeIcon('chevron')}</span>
+    <span class="tree-dev-dot"></span>
     <span class="tree-dev-type-name">${esc2(dev.name)}</span>
-    <span class="tree-dev-type-tag" title="${esc2(cat.name)}">${cat.icon} ${esc2(cat.name)}</span>
+    <span class="tree-dev-type-tag" title="${esc2(cat.name)}">${esc2(cat.name)}</span>
     <span class="tree-dev-type-meta">${(dev.signals||[]).length} sig</span>
     <div class="tree-dev-type-acts">
       <button class="tree-dev-btn" onclick="openDeviceTypeModal('${dev.id}');event.stopPropagation()" title="Edit">✎</button>
@@ -374,6 +412,109 @@ function makeDevTypeRow(dev) {
   return wrap;
 }
 
+// ── PLC configuration modal ─────────────────────────────────
+function openPlcConfigModal() {
+  const cfg = project.plcConfig || {};
+  let el = document.getElementById('modal-plc-config');
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = 'modal-plc-config';
+  el.className = 'modal-bg';
+  el.style.cssText = 'align-items:center;justify-content:center;';
+
+  const plcTypes = ['Siemens S7-1200', 'Siemens S7-1500', 'Modbus TCP', 'Omron', 'Mitsubishi'];
+  const currentType = cfg.type || 'Siemens S7-1200';
+  const plcOptions = plcTypes.map(t => `<option value="${esc2(t)}" ${currentType===t?'selected':''}>${esc2(t)}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="modal" style="width:520px;min-width:360px;max-width:92vw;display:flex;flex-direction:column;padding:0;overflow:hidden;">
+      <div style="padding:12px 20px 10px;background:var(--s3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <span style="font-size:15px;">${treeIcon('plc','plc')}</span>
+        <span style="font-size:12px;letter-spacing:.3px;font-family:'Segoe UI',sans-serif;font-weight:600;">PLC Configuration</span>
+      </div>
+      <div style="padding:14px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;">
+        <div style="grid-column:1 / -1;">
+          <div class="dev-field-lbl">Name / Model PLC</div>
+          <input id="plc-modal-name" type="text" placeholder="Model PLC" value="${esc2(cfg.name || project.plcName || project.machineName || 'Model PLC')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <div class="dev-field-lbl">PLC</div>
+          <select id="plc-modal-type" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+            ${plcOptions}
+          </select>
+        </div>
+        <div>
+          <div class="dev-field-lbl">IP Address</div>
+          <input id="plc-modal-ip" type="text" placeholder="192.168.0.1" value="${esc2(cfg.ip || '')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+        <div>
+          <div class="dev-field-lbl">Port</div>
+          <input id="plc-modal-port" type="number" min="0" placeholder="102" value="${esc2(cfg.port ?? '102')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+        <div>
+          <div class="dev-field-lbl">Rack</div>
+          <input id="plc-modal-rack" type="number" min="0" placeholder="0" value="${esc2(cfg.rack ?? '0')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+        <div>
+          <div class="dev-field-lbl">Slot</div>
+          <input id="plc-modal-slot" type="number" min="0" placeholder="1" value="${esc2(cfg.slot ?? '1')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+        <div style="grid-column:1 / -1;">
+          <div class="dev-field-lbl">Timeout</div>
+          <input id="plc-modal-timeout" type="number" min="0" placeholder="3000" value="${esc2(cfg.timeout ?? '3000')}"
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+        </div>
+      </div>
+      <div style="padding:0 20px 14px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" onclick="plcConnect()">Connect</button>
+        <button class="btn" onclick="plcDisconnect()">Disconnect</button>
+        <button class="btn" onclick="plcPingTest()">Ping Test</button>
+      </div>
+      <div style="padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--s3);">
+        <button class="btn" onclick="closeModal('modal-plc-config')">Cancel</button>
+        <button class="btn a" onclick="confirmPlcConfig()">✓ Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  showModal('modal-plc-config');
+  setTimeout(()=>document.getElementById('plc-modal-name').focus(),80);
+}
+
+function confirmPlcConfig() {
+  const name = (document.getElementById('plc-modal-name').value || '').trim() || 'Model PLC';
+  project.plcConfig = {
+    name,
+    type: document.getElementById('plc-modal-type').value,
+    ip: (document.getElementById('plc-modal-ip').value || '').trim(),
+    port: document.getElementById('plc-modal-port').value,
+    rack: document.getElementById('plc-modal-rack').value,
+    slot: document.getElementById('plc-modal-slot').value,
+    timeout: document.getElementById('plc-modal-timeout').value
+  };
+  project.plcName = name;
+  saveProject(); renderTree();
+  closeModal('modal-plc-config');
+  toast('✓ PLC configuration saved');
+}
+
+function plcConnect() {
+  toast('PLC connect command is ready');
+}
+
+function plcDisconnect() {
+  toast('PLC disconnect command is ready');
+}
+
+function plcPingTest() {
+  const ip = (document.getElementById('plc-modal-ip')?.value || '').trim();
+  toast(ip ? 'Ping Test: ' + ip : 'Ping Test: enter IP Address');
+}
+
 // ── Device type modal ─────────────────────────────────────
 let _devModalDevId=null;
 
@@ -394,40 +535,35 @@ function openDeviceTypeModal(devId) {
   ).join('');
 
   el.innerHTML=`
-    <div class="modal" style="min-width:640px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
+    <div class="modal" style="width:800px;min-width:430px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
       <div style="padding:12px 20px 10px;background:var(--s3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;">
         <span style="font-size:15px;">🔩</span>
-        <span style="font-size:12px;letter-spacing:2px;font-family:'Orbitron',monospace;">${devId?'EDIT':'NEW'} STRUCT DATA</span>
-        <span class="dev-class-badge" style="margin-left:auto;">CLASS</span>
+        <span style="font-size:12px;letter-spacing:.3px;font-family:'Segoe UI',sans-serif;font-weight:600;">${devId?'Edit':'New'} Struct Data</span>
       </div>
       <div style="padding:12px 20px 4px;display:flex;gap:20px;flex-shrink:0;flex-wrap:wrap;">
         <div style="flex:1;min-width:180px;">
-          <div class="dev-field-lbl">STRUCT DATA NAME</div>
+          <div class="dev-field-lbl">Struct data name</div>
           <input id="dev-modal-name" type="text" placeholder="e.g. CylA, MotorConv…"
-            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+            style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;margin-top:5px;">
         </div>
         <div style="flex:0 0 180px;">
-          <div class="dev-field-lbl">TYPE</div>
-          <select id="dev-modal-cat" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px 8px;border-radius:3px;outline:none;margin-top:5px;">
+          <div class="dev-field-lbl">Type</div>
+          <select id="dev-modal-cat" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:12px;padding:5px 8px;border-radius:3px;outline:none;margin-top:5px;">
             ${typeOptions}
           </select>
         </div>
       </div>
-      <div style="margin:6px 20px 4px;padding:5px 10px;background:rgba(34,211,238,.05);border:1px solid rgba(34,211,238,.15);border-radius:3px;font-size:9px;color:var(--text3);display:flex;gap:6px;flex-shrink:0;">
-        <span style="color:var(--cyan);">ℹ</span>
-        <span>This is a <b>class</b> — no address here. In the <b>Variable Table</b>, select this struct data as DATA FORMAT to create an instance. Address is assigned per-signal in the Variable Table.</span>
-      </div>
       <div style="padding:4px 20px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:9px;letter-spacing:1.5px;color:var(--cyan);font-family:'Orbitron',monospace;">SIGNALS</span>
+        <span style="font-size:11px;letter-spacing:.3px;color:var(--cyan);font-family:'Segoe UI',sans-serif;font-weight:600;">Signals</span>
         <button class="btn" style="border-color:var(--cyan);color:var(--cyan);font-size:9px;" onclick="devModalAddRow()">+ Add Signal</button>
       </div>
       <div style="flex:1;overflow:auto;padding:0 20px 8px;">
         <table class="dev-sig-table">
           <thead><tr>
-            <th style="width:140px;">SIGNAL NAME</th>
-            <th style="width:90px;">DATA TYPE</th>
-            <th style="width:110px;">VARIABLE TYPE</th>
-            <th>COMMENT</th>
+            <th style="width:140px;">Signal name</th>
+            <th style="width:67px;">Data type</th>
+            <th style="width:80px;">Variable type</th>
+            <th>Comment</th>
             <th style="width:22px;"></th>
           </tr></thead>
           <tbody id="dev-modal-tbody"></tbody>
@@ -522,16 +658,14 @@ function makeDiagItem(d) {
   item.dataset.id = d.id; item.dataset.type = 'diagram';
 
   const MODE_COLORS = {Auto:'#39d353',Origin:'#f5a623',Manual:'#4fa3e3',Error:'#e35a4f',Drivers:'#a78bfa'};
-  const MODE_LETTERS = {Auto:'A',Origin:'O',Manual:'M',Error:'E',Drivers:'D'};
   const modeColor = MODE_COLORS[d.mode]||'var(--text3)';
-  const modeLetter = MODE_LETTERS[d.mode]||'P';
   const typeLbl = d.diagramType==='SubRoutine'?'SR':'M';
   const typeColor = d.diagramType==='SubRoutine'?'var(--blue)':'var(--amber)';
 
   item.innerHTML = `
-    <span class="tree-item-icon tree-program-icon" style="color:${modeColor};border-color:${modeColor};background:color-mix(in srgb, ${modeColor} 14%, transparent);" title="${esc2(d.mode||'Program')}">${modeLetter}</span>
+    <span class="tree-item-mode-dot" style="background:${modeColor};box-shadow:0 0 5px ${modeColor};" title="${esc2(d.mode||'Program')}"></span>
     <span class="tree-item-name">${esc2(d.name)}</span>
-    <span style="font-size:7px;padding:1px 3px;border:1px solid ${typeColor};color:${typeColor};border-radius:2px;flex-shrink:0;">${typeLbl}</span>
+    <span class="tree-item-type-badge" style="border-color:${typeColor};color:${typeColor};">${typeLbl}</span>
     <div class="tree-item-actions">
       <button class="tree-item-btn" onclick="openDiagPropsPanel('${d.id}');event.stopPropagation()" title="Properties">⚙</button>
       <button class="tree-item-btn del" onclick="removeDiagram('${d.id}',event)" title="Delete">✕</button>

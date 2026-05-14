@@ -67,7 +67,7 @@ ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
 {{/if}}
 ANB  {{pad unit.flagManPEnd}}; Manual P end
 OUT  {{pad unit.flagManual}}; Manual
-{{#if hasCylinders}}
+{{#if hasCysWithOut}}
 LD   {{pad unit.flagManual}}; Manual
 {{#if isSingleCylinder}}
 ANP  {{pad cylinders.[0].HmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
@@ -84,34 +84,17 @@ ALT  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{/if}}
 {{#if hasCysWithOut}}
 LDB  {{pad unit.flagManual}}; Manual
-{{#if cysWithOutMultiple}}
 MPS
 {{#each cysWithOut}}
-{{#if CoilA}}
 ANP  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
 {{{stackBeforeDirB}}}
-{{#if CoilB}}
 ANP  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
 {{#if stackAfterDirB}}
 {{{stackAfterDirB}}}
 {{/if}}
 {{/each}}
-{{else}}
-{{#with cysWithOut.[0]}}
-{{#if CoilA}}
-ANP  {{pad CoilA}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirAName}}}
-SET  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
-{{#if CoilB}}
-ANP  {{pad CoilB}}; Out_{{{unit.label}}}_{{{label}}}_{{{dirBName}}}
-RES  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
-{{/with}}
-{{/if}}
 {{/if}}
 LDB  {{pad unit.flagManual}}; Manual
 {{#if showManBtnZres}}

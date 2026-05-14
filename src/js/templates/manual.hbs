@@ -14,7 +14,7 @@ ANB  {{pad unit.eStop}}; {{{unit.label}}}  estop
 ANB  {{pad unit.flagManPEnd}}; Manual P end
 OUT  {{pad unit.flagManual}}; Manual
 {{!-- ─── HMI manual button: ALT toggle per cylinder ─────────────────── --}}
-{{#if hasCylinders}}
+{{#if hasCysWithOut}}
 LD   {{pad unit.flagManual}}; Manual
 {{#if isSingleCylinder}}
 {{!-- single cylinder: direct ANP + ALT --}}
@@ -22,7 +22,7 @@ ANP  {{pad cylinders.[0].HmiManBtn}}; Hmi_man _{{{cylinders.[0].label}}}
 ALT  {{pad cylinders.[0].sysManFlag}}; sys_man_{{{cylinders.[0].label}}}
 {{else}}
 {{!-- multiple cylinders: MPS/MRD/MPP stack via altStackInst --}}
-{{#each cylinders}}
+{{#each cysWithOut}}
 {{#if altStackInst}}
 {{{altStackInst}}}
 {{/if}}
@@ -34,36 +34,18 @@ ALT  {{pad sysManFlag}}; sys_man_{{{label}}}
 {{!-- ─── Output direction detection: SET/RES sysManFlag ─────────────── --}}
 {{#if hasCysWithOut}}
 LDB  {{pad unit.flagManual}}; Manual
-{{#if cysWithOutMultiple}}
 {{!-- multiple cylinders: MPS stack --}}
 MPS
 {{#each cysWithOut}}
-{{#if CoilA}}
 ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
 SET  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
 {{{stackBeforeDirB}}}
-{{#if CoilB}}
 ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
 RES  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
 {{#if stackAfterDirB}}
 {{{stackAfterDirB}}}
 {{/if}}
 {{/each}}
-{{else}}
-{{!-- single cylinder with output --}}
-{{#with cysWithOut.[0]}}
-{{#if CoilA}}
-ANP  {{pad CoilA}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirAName}}}
-SET  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
-{{#if CoilB}}
-ANP  {{pad CoilB}}; Out_{{{../unit.label}}}_{{{label}}}_{{{dirBName}}}
-RES  {{pad sysManFlag}}; sys_man_{{{label}}}
-{{/if}}
-{{/with}}
-{{/if}}
 {{/if}}
 {{!-- ─── ZRES HMI buttons + ManPEnd pulse ────────────────────────────── --}}
 LDB  {{pad unit.flagManual}}; Manual
@@ -71,4 +53,4 @@ LDB  {{pad unit.flagManual}}; Manual
 ZRES {{{unit.hmiManBtnBase}}} {{{unit.hmiManBtnEnd}}} ; Hmi_man _{{{firstCyLabel}}}
 {{/if}}
 AND   {{pad unit.flagAuto}}; Auto
-DIFU {{pad unit.flagManPEnd}}; Manual P end
+DIFD {{pad unit.flagManPEnd}}; Manual P end
