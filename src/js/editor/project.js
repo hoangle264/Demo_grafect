@@ -239,7 +239,7 @@ function w2s(wx,wy) {
   const r=document.getElementById('canvas-wrap').getBoundingClientRect();
   return {x:(wx-r.left-viewX)/viewScale, y:(wy-r.top-viewY)/viewScale};
 }
-function drawGrid() {
+function drawGrid(drawGuide = true) {
   const c=document.getElementById('grid-canvas');
   const w=document.getElementById('canvas-wrap');
   c.width=w.clientWidth; c.height=w.clientHeight;
@@ -254,6 +254,7 @@ function drawGrid() {
   ctx.strokeStyle='#1d2438'; ctx.lineWidth=1;
   for(let x=ox2;x<c.width;x+=maj){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();}
   for(let y=oy2;y<c.height;y+=maj){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();}
+  if(drawGuide && dragSnapState?.isSnapped) drawSnapGuideLine(dragSnapState, ctx);
 }
 function zoomIn(){viewScale=Math.min(4,viewScale*1.2);applyView();}
 function zoomOut(){viewScale=Math.max(.15,viewScale/1.2);applyView();}

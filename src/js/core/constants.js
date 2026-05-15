@@ -8,6 +8,8 @@ const TW = 70, TH = 8;      // Transition width/height
 const PH = 8;                // Parallel bar height (per line)
 const GRID = 20;
 const ACT_W = 160;           // Action box width (wider)
+const SNAP_ENTER_THRESHOLD = 24; // px
+const SNAP_EXIT_THRESHOLD = 58;  // px
 
 // ═══════════════════════════════════════════════════════════
 //  PROJECT STATE
@@ -24,6 +26,7 @@ let snapOn=true;
 let tool='select';
 let selIds = new Set();     // multi-select
 let dragging=false, dragMap=new Map(); // id -> {dx,dy}
+let dragSnapState=null, dragSnapCandidates=[], dragSnapPrimaryId=null;
 let panning=false, panSX=0, panSY=0;
 let connecting=false, connFrom=null; // {id, type, port}
 let selBoxing=false, selBoxSX=0, selBoxSY=0;
