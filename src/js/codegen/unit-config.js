@@ -2139,19 +2139,26 @@ function cgUCBuildTemplateContext(ctx) {
 
   // ── Enrich cylinders với altStackInst + trường output ────────────────────
   const cylinders = cys.map(function(cy, i) {
-    const enrichedStepsDirB = (cy.stepsForDirB || []).map(function(s, si) {
-      const sLabel = (s.actions && s.actions.length)
-        ? (s.actions[0].devLabel || '') + ' ' + ucDirFromSigName(s.actions[0].sigName || '')
-        : (s.label || '');
-      return Object.assign({}, s, { sLabel: sLabel, needsORL: si > 0 });
-    });
+    function enrichOutputSteps(steps) {
+      return (steps || []).map(function(s, si) {
+        const sLabel = (s.actions && s.actions.length)
+          ? (s.actions[0].devLabel || '') + ' ' + ucDirFromSigName(s.actions[0].sigName || '')
+          : (s.label || '');
+        return Object.assign({}, s, { sLabel: sLabel, needsORL: si > 0 });
+      });
+    }
+    const enrichedStepsDirA = enrichOutputSteps(cy.allStepsDirA || (cy.stepDirA ? [cy.stepDirA] : []));
+    const enrichedStepsDirB = enrichOutputSteps(cy.stepsForDirB || []);
     const hasOutput     = !!(cy.outDirA || cy.outDirB);
-    const hasDirAOutput = !!(cy.stepDirA && cy.outDirA);
+    const hasDirAOutput = !!(enrichedStepsDirA.length > 0 && cy.outDirA);
     const hasDirBOutput = !!(enrichedStepsDirB.length > 0 && cy.outDirB);
     return Object.assign({}, cy, {
       altStackInst:      ucAltStackInst(i, cys.length),
+      enrichedStepsDirA: enrichedStepsDirA,
       enrichedStepsDirB: enrichedStepsDirB,
+      singleStepDirA:    enrichedStepsDirA.length === 1,
       singleStepDirB:    enrichedStepsDirB.length === 1,
+      multiStepDirA:     enrichedStepsDirA.length > 1,
       multiStepDirB:     enrichedStepsDirB.length > 1,
       hasOutput:         hasOutput,
       hasDirAOutput:     hasDirAOutput,

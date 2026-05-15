@@ -207,8 +207,19 @@ ZRES {{{steps.[0].addr}}} {{{resetEndAddr}}} ; {{{lastStep.actionLabel}}} Cmp
 ;{{{label}}}
 {{#if hasDirAOutput}}
 LD   {{pad ../unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
+{{#if singleStepDirA}}
+LD   {{pad enrichedStepsDirA.[0].addr}}; {{{enrichedStepsDirA.[0].sLabel}}}
+ANB  {{pad enrichedStepsDirA.[0].cmpAddr}}; {{{enrichedStepsDirA.[0].sLabel}}} Cmp
+{{else}}
+{{#each enrichedStepsDirA}}
+LD   {{pad addr}}; {{{sLabel}}}
+ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
+{{#if needsORL}}
+ORL
+{{/if}}
+{{/each}}
+{{/if}}
+ANL
 LD   {{pad ../unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
@@ -300,8 +311,19 @@ OUT  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
 ;{{{label}}}
 {{#if hasDirAOutput}}
 LD   {{pad unit.flagAuto}}; Auto
-AND  {{pad stepDirA.addr}}; {{{label}}} {{{dirAName}}}
-ANB  {{pad stepDirA.cmpAddr}}; {{{label}}} {{{dirAName}}} Cmp
+{{#if singleStepDirA}}
+LD   {{pad enrichedStepsDirA.[0].addr}}; {{{enrichedStepsDirA.[0].sLabel}}}
+ANB  {{pad enrichedStepsDirA.[0].cmpAddr}}; {{{enrichedStepsDirA.[0].sLabel}}} Cmp
+{{else}}
+{{#each enrichedStepsDirA}}
+LD   {{pad addr}}; {{{sLabel}}}
+ANB  {{pad cmpAddr}}; {{{sLabel}}} Cmp
+{{#if needsORL}}
+ORL
+{{/if}}
+{{/each}}
+{{/if}}
+ANL
 LD   {{pad unit.flagManual}}; Manual
 ANP  {{pad sysManFlag}}; sys_man_{{{label}}}
 ORL
