@@ -798,6 +798,29 @@ function ucAddDeviceGroupAliases(target, devicesByKind) {
   return target;
 }
 
+function ucNormalizeDeviceLookupKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function ucCollectFlowCommandDeviceKeys(steps) {
+  const keys = new Set();
+  (steps || []).forEach(function(step) {
+    (step.actions || []).forEach(function(act) {
+      const key = ucNormalizeDeviceLookupKey(act && act.devLabel);
+      if (key) keys.add(key);
+    });
+  });
+  return keys;
+}
+
+function ucDeviceHasFlowCommand(dev, commandDeviceKeys) {
+  if (!dev || !commandDeviceKeys || !commandDeviceKeys.size) return false;
+  return [dev.id, dev.label, dev.name].some(function(value) {
+    const key = ucNormalizeDeviceLookupKey(value);
+    return key && commandDeviceKeys.has(key);
+  });
+}
+
 function ucResolveDeviceSignalAddress(lookupVars, deviceId, signalName) {
   if (!deviceId || !signalName) return '';
   const v = (lookupVars || []).find(function(x) { return x.label === deviceId; });
@@ -2195,6 +2218,10 @@ function cgUCBuildTemplateContext(ctx) {
 
   const firstCyLabel = cys.length > 0 ? cys[0].label : 'CY';
 
+  const flowCommandDeviceKeys = ucCollectFlowCommandDeviceKeys(
+    originSteps.concat(stationFlows.flatMap(function(flow) { return flow.steps || []; }))
+  );
+
   // ── Build unified devices array for main-output.hbs ──────────────────────
   // Cylinders use their enriched objects; servo/motor use raw deviceList props.
   // Every item must carry an explicit `kind` so that the eq helper works.
@@ -2216,6 +2243,10 @@ function cgUCBuildTemplateContext(ctx) {
     return ucDecorateDeviceForTemplate(withSignals, u);
   });
 
+  const outputDevices = devices.filter(function(dev) {
+    return ucDeviceHasFlowCommand(dev, flowCommandDeviceKeys);
+  });
+
   const devicesByKind = {};
   devices.forEach(function(dev) {
     const key = dev.kind || 'unknown';
@@ -2223,7 +2254,14 @@ function cgUCBuildTemplateContext(ctx) {
     devicesByKind[key].push(dev);
   });
 
-  const dynamicDeviceWarnings = devices
+  const outputDevicesByKind = {};
+  outputDevices.forEach(function(dev) {
+    const key = dev.kind || 'unknown';
+    if (!outputDevicesByKind[key]) outputDevicesByKind[key] = [];
+    outputDevicesByKind[key].push(dev);
+  });
+
+  const dynamicDeviceWarnings = outputDevices
     .filter(function(dev) { return dev.renderWarning; })
     .map(function(dev) { return dev.renderWarning; });
 
@@ -2232,6 +2270,9 @@ function cgUCBuildTemplateContext(ctx) {
     cylinders:         cylinders,
     devices:           devices,
     devicesByKind:     devicesByKind,
+    outputDevices:     outputDevices,
+    commandedDevices:  outputDevices,
+    outputDevicesByKind: outputDevicesByKind,
     cysWithOut:        cysWithOutEnriched,
     hasCylinders:      cys.length > 0,
     isSingleCylinder:  cys.length === 1,

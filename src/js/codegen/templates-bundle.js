@@ -268,8 +268,7 @@ ONDL #{{{errorTimeout}}} {{{ErrorB}}}   ; Error_{{{label}}}_{{{dirBName}}}
 
   // ── src/templates/main-output.hbs ────────────────────────────────────────
   'main-output': `;<h1>OUTPUT SECTION (AUTO/MANUAL)
-{{#each devices}}
-;DEVICE {{kind}} {{label}}
+{{#each outputDevices}}
 {{{renderDeviceOutput this ../unit}}}
 {{/each}}
 `,
