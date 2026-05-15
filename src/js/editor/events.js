@@ -369,12 +369,21 @@ const elDown = (e, id, type) => {
   if (tool === 'select') startElementDrag(e, id);
 };
 
+const getParallelPortMetricsForSnap = (pb) => {
+  const ports = Math.max(2, pb.ports || 3);
+  const minInset = PAR_PORT_INSET;
+  const maxInset = (pb.width - PAR_PORT_MIN_USABLE) / 2;
+  const inset = Math.min(minInset, Math.max(PAR_PORT_MIN_INSET, maxInset));
+  const usableWidth = Math.max(1, pb.width - inset * 2);
+  const gap = ports === 1 ? 0 : usableWidth / (ports - 1);
+  return { ports, startX: pb.x + inset, gap };
+};
+
 // Find nearest port on a parallel bar given mouse world coords
 const getNearestParPort = (pb, mx, my) => {
   const barH = PH * 2 + 4;
   const isSplit = pb.type === 'split';
-  const ports = pb.ports || 3;
-  const spacing = pb.width / ports;
+  const { ports, startX, gap } = getParallelPortMetricsForSnap(pb);
   const cx = pb.x + pb.width / 2;
   const singleY = isSplit ? pb.y : pb.y + barH;
   const branchY = isSplit ? pb.y + barH : pb.y;
@@ -383,7 +392,7 @@ const getNearestParPort = (pb, mx, my) => {
   for (let i = 0; i < ports; i += 1) {
     candidates.push({
       port: isSplit ? `bottom-${i}` : `top-${i}`,
-      x: pb.x + spacing * (i + 0.5),
+      x: startX + gap * i,
       y: branchY,
     });
   }

@@ -10,6 +10,9 @@ const GRID = 20;
 const ACT_W = 160;           // Action box width (wider)
 const SNAP_ENTER_THRESHOLD = 24; // px
 const SNAP_EXIT_THRESHOLD = 58;  // px
+const PAR_PORT_INSET = 50;
+const PAR_PORT_MIN_INSET = 8;
+const PAR_PORT_MIN_USABLE = 16;
 
 // ═══════════════════════════════════════════════════════════
 //  PROJECT STATE

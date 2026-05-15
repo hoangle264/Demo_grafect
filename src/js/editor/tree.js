@@ -13,7 +13,7 @@ function renderTabs() {
       const tab = document.createElement('div');
       tab.className = 'tab' + (activeDiagramId===t.id?' active':'');
       tab.dataset.id = t.id;
-      tab.innerHTML = `<span class="tab-name">Structure: ${esc2(dev?.name||'Unknown')}</span><button class="tab-close" onclick="closeTab('${t.id}',event)">Ã—</button>`;
+      tab.innerHTML = `<span class="tab-name">Structure: ${esc2(dev?.name||'Unknown')}</span><button class="tab-close" onclick="closeTab('${t.id}',event)">×</button>`;
       tab.addEventListener('click', e=>{ if(!e.target.classList.contains('tab-close')) openStructTab(devId); });
       bar.appendChild(tab);
       return;

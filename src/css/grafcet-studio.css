@@ -735,7 +735,27 @@ textarea.prop-input{resize:vertical;min-height:70px;}
   background:var(--s2);border:1px solid var(--border);border-radius:3px;
   font-size:10px;color:var(--text2);margin-right:8px;margin-bottom:12px;
 }
-
+.structure-panel-body .et-section-title{
+  font-family:var(--font-ui);
+  font-size:11px;
+  letter-spacing:.3px;
+  text-transform:none;
+  color:var(--text2);
+}
+.structure-panel-body .et-table{
+  font-family:var(--font-ui);
+  font-size:11px;
+}
+.structure-panel-body .et-table thead th{
+  font-family:var(--font-ui);
+  font-size:10px;
+  letter-spacing:.3px;
+  text-transform:none;
+  font-weight:600;
+}
+.structure-panel-body .et-table tbody td{
+  font-size:11px;
+}
 
 /* ─── Action Editor (IEC qualifier) ─── */
 .act-editor{padding:8px 12px;border-bottom:1px solid var(--border);}

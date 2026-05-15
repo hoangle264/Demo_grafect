@@ -9,7 +9,7 @@
     completeValue : giá trị so sánh (nếu có, VD: K1 cho INT register)
     actionLabel   : nhãn hành động (VD: "CY1 CoilA")
 --}}
-LD   {{pad addr}}; {{{actionLabel}}}
+LD   {{pad addr}}; {{{actionLabel}}} gh
 {{#if completeValue}}
 AND= {{pad complete}} {{completeValue}}; {{{completeLabel}}}
 {{else}}
@@ -19,4 +19,4 @@ ANB  {{pad complete}}; {{{completeLabel}}}
 AND  {{pad complete}}; {{{completeLabel}}}
 {{/if}}
 {{/if}}
-SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp
+SET  {{pad cmpAddr}}; {{{actionLabel}}} Cmp1

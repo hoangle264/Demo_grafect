@@ -41,19 +41,27 @@ function getPortXY(id, port) {
     if(port==='bottom') return {x:p.x+p.width/2, y:p.y+barH};
     if(port?.startsWith('top-')){
       const idx=+port.split('-')[1];
-      const ports=p.ports||3;
-      const spacing=p.width/(ports);
-      return {x:p.x+spacing*(idx+.5), y:p.y};
+      const metrics=getParallelPortMetrics(p);
+      return {x:metrics.startX+metrics.gap*idx, y:p.y};
     }
     if(port?.startsWith('bottom-')){
       const idx=+port.split('-')[1];
-      const ports=p.ports||3;
-      const spacing=p.width/(ports);
-      return {x:p.x+spacing*(idx+.5), y:p.y+barH};
+      const metrics=getParallelPortMetrics(p);
+      return {x:metrics.startX+metrics.gap*idx, y:p.y+barH};
     }
     return {x:p.x+p.width/2, y:p.y+barH/2};
   }
   return null;
+}
+
+function getParallelPortMetrics(p){
+  const ports=Math.max(2, p.ports||3);
+  const minInset=PAR_PORT_INSET;
+  const maxInset=(p.width-PAR_PORT_MIN_USABLE)/2;
+  const inset=Math.min(minInset, Math.max(PAR_PORT_MIN_INSET, maxInset));
+  const usableWidth=Math.max(1, p.width-inset*2);
+  const gap=ports===1 ? 0 : usableWidth/(ports-1);
+  return {ports, inset, gap, startX:p.x+inset};
 }
 function buildConnEl(c) {
   const fp=getPortXY(c.from, c.fromPort||'bottom');
@@ -240,10 +248,10 @@ function buildParEl(p) {
   const g=svgE('g'); g.setAttribute('class','gf-par'); g.id='el-'+p.id;
   g.dataset.id=p.id; g.dataset.type='parallel';
   const sel=selIds.has(p.id);
-  const barH=PH*2+4;
+  const barH=PH*1.25;
   const isSplit=p.type==='split';
   const ports=p.ports||3;
-  const spacing=p.width/ports;
+  const metrics=getParallelPortMetrics(p);
   const cx=p.x+p.width/2;
 
   // ── Hit area FIRST (lowest z-order) so ports sit on top ──
@@ -275,13 +283,13 @@ function buildParEl(p) {
 
   // Branch vertical lines
   for(let i=0;i<ports;i++){
-    const bx=p.x+spacing*(i+.5);
+    const bx=metrics.startX+metrics.gap*i;
     const bv=svgE('line'); bv.setAttribute('class','p-vline');
     if(isSplit){bv.setAttribute('x1',bx);bv.setAttribute('y1',p.y+barH);bv.setAttribute('x2',bx);bv.setAttribute('y2',p.y+barH+18);}
     else       {bv.setAttribute('x1',bx);bv.setAttribute('y1',p.y-18);bv.setAttribute('x2',bx);bv.setAttribute('y2',p.y);}
     g.appendChild(bv);
     // Branch index label
-    const bidx=svgE('text'); bidx.setAttribute('font-size','8');
+    const bidx=svgE('text'); bidx.setAttribute('font-size','12');
     bidx.setAttribute('fill','rgba(167,139,250,.5)'); bidx.setAttribute('text-anchor','middle');
     bidx.setAttribute('font-family','monospace');
     if(isSplit){bidx.setAttribute('x',bx);bidx.setAttribute('y',p.y+barH+30);}
@@ -309,7 +317,7 @@ function buildParEl(p) {
   // Branch ports (Step side) — one per branch, each individually clickable
   const branchPY = isSplit ? p.y+barH : p.y;
   for(let i=0;i<ports;i++){
-    const bx=p.x+spacing*(i+.5);
+    const bx=metrics.startX+metrics.gap*i;
     const bPort = isSplit?`bottom-${i}`:`top-${i}`;
     addParPort(g, bx, branchPY, p.id, bPort, false);
   }
