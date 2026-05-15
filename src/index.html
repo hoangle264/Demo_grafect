@@ -9,8 +9,8 @@
 <body>
 
 <!-- Header -->
-<header>
-  <div class="header-right menubar">
+<header class="app-header">
+  <nav class="header-right menubar" aria-label="Application menu">
     <div class="menu">
       <button class="menu-btn">File</button>
       <div class="menu-pop">
@@ -43,21 +43,21 @@
     <button class="btn a" onclick="saveDiagram()">⬇ Save</button>
     <button class="btn g" onclick="exportHTML()">⬆ Export HTML</button>
     <button class="btn p" onclick="exportProject()">⬆ Export Project</button>
-    <button class="btn" onclick="showExportTablesModal()" style="border-color:#22d3ee;color:#22d3ee;">⊞ Tables</button>
-    <button class="btn" onclick="showGenerateCodeModal()" style="border-color:#a78bfa;color:#a78bfa;">⟨/⟩ Code</button>
+    <button class="btn btn-cyan" onclick="showExportTablesModal()">⊞ Tables</button>
+    <button class="btn btn-purple" onclick="showGenerateCodeModal()">⟨/⟩ Code</button>
     <button class="btn" onclick="triggerImport()">↑ Import</button>
-    <input type="file" id="file-input" accept=".json,.grafcet,.grafcet2" style="display:none" onchange="handleImport(event)">
-  </div>
+    <input type="file" id="file-input" accept=".json,.grafcet,.grafcet2" class="is-hidden" onchange="handleImport(event)">
+  </nav>
 </header>
 
-<div class="app">
+<main class="app">
 <!-- Left Sidebar -->
-<div class="sidebar" id="sidebar">
+<aside class="sidebar" id="sidebar" aria-label="Project and tools panels">
   <!-- Collapsed strip -->
   <div class="sidebar-strip">
     <button class="sidebar-strip-btn" onclick="toggleSidebar()" title="Open sidebar">▶</button>
-    <button class="sidebar-strip-btn" onclick="switchSidebarTab('proj')" title="Project" style="font-size:9px;">📁</button>
-    <button class="sidebar-strip-btn" onclick="switchSidebarTab('tools')" title="Tools" style="font-size:9px;">🔧</button>
+    <button class="sidebar-strip-btn icon-compact" onclick="switchSidebarTab('proj')" title="Project">📁</button>
+    <button class="sidebar-strip-btn icon-compact" onclick="switchSidebarTab('tools')" title="Tools">🔧</button>
     <div class="sidebar-strip-label">PANELS</div>
   </div>
 
@@ -70,7 +70,7 @@
         <span class="sub-panel-title">📁 PROJECT</span>
         <button class="panel-head-btn" onclick="addUnit()" title="Add Unit">⊕ Unit</button>
       </div>
-      <div style="flex:1;overflow-y:auto;">
+      <div class="panel-scroll">
         <div class="tree-body" id="tree-body"></div>
       </div>
     </div>
@@ -81,9 +81,9 @@
       <div class="sub-panel-head">
         <span class="sub-panel-title">🔧 TOOLS</span>
       </div>
-      <div style="flex:1;overflow-y:auto;">
+      <div class="panel-scroll">
         <!-- Alignment (hidden align-bar placeholder kept for compat) -->
-        <div class="align-bar" id="align-bar" style="display:none;"></div>
+        <div class="align-bar is-hidden" id="align-bar"></div>
         <div class="tools-panel">
     <div class="tool-section">
       <div class="tool-section-title">TOOLS</div>
@@ -191,14 +191,13 @@
     </div>
 
   </div><!-- /sidebar-content -->
-  <button class="sidebar-strip-btn" id="sidebar-toggle-btn"
+  <button class="sidebar-strip-btn sidebar-toggle-floating" id="sidebar-toggle-btn"
     onclick="toggleSidebar()"
-    style="position:absolute;bottom:8px;right:4px;width:26px;height:26px;z-index:10;opacity:.6;"
     title="Collapse sidebar">◀</button>
-</div><!-- /sidebar -->
+</aside><!-- /sidebar -->
 
 <!-- Main Area -->
-<div class="main-area">
+<section class="main-area" aria-label="Diagram workspace">
   <!-- Tabs -->
   <div class="tabs-bar" id="tabs-bar">
     <button class="tab-new" onclick="addDiagram()" title="New Diagram">＋</button>
@@ -234,43 +233,43 @@
   </div>
 
   <!-- Global Vars Tab Panel (virtual tab — shown when __vars__ tab is active) -->
-  <div id="gvt-main-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
-    <div class="sub-panel-head" style="flex-shrink:0;border-bottom:1px solid var(--border);">
+  <section id="gvt-main-panel" class="virtual-panel is-hidden" aria-label="Variables">
+    <div class="sub-panel-head sub-panel-head-fixed">
       <span class="sub-panel-title">📋 VARIABLES</span>
-      <button class="panel-head-btn" onclick="showExcelImportModal()" title="Import từ CSV/Excel" style="border-color:#22d3ee;color:#22d3ee;">📥 Import</button>
+      <button class="panel-head-btn btn-cyan" onclick="showExcelImportModal()" title="Import từ CSV/Excel">📥 Import</button>
       <button class="panel-head-btn" onclick="gvtAddUserVar()" title="Add user variable">+ User Var</button>
     </div>
-    <div style="padding:6px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+    <div class="gvt-toolbar">
       <input id="gvt-search" type="text" placeholder="🔍 Filter..."
-        style="flex:1;max-width:280px;background:var(--s2);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:10px;color:var(--text1);"
+        class="gvt-search-input"
         oninput="renderGlobalVarTable()">
-      <span id="gvt-count" style="font-size:9px;color:var(--text3);">0 struct data</span>
+      <span id="gvt-count" class="muted-mini">0 struct data</span>
     </div>
-    <div style="flex:1;overflow-y:auto;">
-      <table class="vt-table" style="width:100%;">
+    <div class="panel-scroll">
+      <table class="vt-table table-full">
         <thead><tr>
-          <th style="width:32px;"></th>
+          <th class="col-icon"></th>
           <th>Label</th>
           <th>Type</th>
-          <th style="min-width:110px;">Address</th>
+          <th class="col-address">Address</th>
         </tr></thead>
         <tbody id="gvt-tbody"></tbody>
       </table>
     </div>
-  </div>
+  </section>
 
   <!-- Structure Tab Panel (virtual tab) -->
-  <div id="struct-main-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
-    <div class="sub-panel-head" style="flex-shrink:0;border-bottom:1px solid var(--border);">
+  <section id="struct-main-panel" class="virtual-panel is-hidden" aria-label="Structure">
+    <div class="sub-panel-head sub-panel-head-fixed">
       <span class="sub-panel-title" id="struct-panel-title">STRUCTURE</span>
       <button class="panel-head-btn" id="struct-panel-edit" onclick="" title="Edit Struct Data">Edit</button>
     </div>
-    <div id="struct-panel-body" style="flex:1;overflow:auto;padding:14px;"></div>
-  </div>
-</div>
+    <div id="struct-panel-body" class="structure-panel-body"></div>
+  </section>
+</section>
 
 <!-- Right Panel -->
-<div class="right-panel" id="right-panel">
+<aside class="right-panel" id="right-panel" aria-label="Properties panel">
   <!-- Collapsed strip -->
   <div class="rpanel-strip">
     <button class="rpanel-strip-btn" onclick="toggleRPanel()" title="Open properties">◀</button>
@@ -283,7 +282,7 @@
   </div>
   <div id="props-area">
     <div id="no-sel">
-      <div style="color:var(--text3);margin-bottom:10px;font-size:9px;letter-spacing:1px;">NO SELECTION</div>
+      <div class="no-selection-title">NO SELECTION</div>
       <div>· <b>S</b> — Step</div>
       <div>· <b>I</b> — Initial Step</div>
       <div>· <b>T</b> — Transition</div>
@@ -297,7 +296,7 @@
     </div>
 
     <!-- Step Props -->
-    <div id="step-props" style="display:none">
+    <div id="step-props" class="is-hidden">
       <div class="prop-group">
         <div class="prop-label">COORDINATES (X / Y)</div>
         <div class="coord-row">
@@ -333,11 +332,11 @@
       <div class="prop-group">
         <label class="prop-check"><input type="checkbox" id="px-init" onchange="setProp('initial',this.checked)"> Initial Step</label>
       </div>
-      <div class="prop-group"><button class="btn r" style="width:100%" onclick="delSelected()">⊘ DELETE</button></div>
+      <div class="prop-group"><button class="btn r btn-full" onclick="delSelected()">⊘ DELETE</button></div>
     </div>
 
     <!-- Transition Props -->
-    <div id="trans-props" style="display:none">
+    <div id="trans-props" class="is-hidden">
       <div class="prop-group">
         <div class="prop-label">COORDINATES (X / Y)</div>
         <div class="coord-row">
@@ -355,11 +354,11 @@
         <div class="prop-label">LABEL</div>
         <input class="prop-input" id="tx-lbl" type="text" placeholder="Label..." oninput="setProp('label',this.value)">
       </div>
-      <div class="prop-group"><button class="btn r" style="width:100%" onclick="delSelected()">⊘ DELETE</button></div>
+      <div class="prop-group"><button class="btn r btn-full" onclick="delSelected()">⊘ DELETE</button></div>
     </div>
 
     <!-- Parallel Bar Props -->
-    <div id="par-props" style="display:none">
+    <div id="par-props" class="is-hidden">
       <div class="prop-group">
         <div class="prop-label">COORDINATES (X / Y)</div>
         <div class="coord-row">
@@ -379,9 +378,9 @@
       </div>
       <div class="prop-group">
         <div class="prop-label">TYPE</div>
-        <div style="font-size:11px;color:var(--purple);padding:4px 0;" id="bx-type"></div>
+        <div class="parallel-type-value" id="bx-type"></div>
       </div>
-      <div class="prop-group"><button class="btn r" style="width:100%" onclick="delSelected()">⊘ DELETE</button></div>
+      <div class="prop-group"><button class="btn r btn-full" onclick="delSelected()">⊘ DELETE</button></div>
     </div>
   </div>
   </div><!-- /props-area -->
@@ -390,7 +389,7 @@
   <div class="dp-panel" id="dp-panel">
     <div class="dp-header">
       <div id="dp-mode-badge" class="dp-mode-badge"></div>
-      <span style="flex:1;font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="dp-title">Diagram</span>
+      <span class="dp-title-text" id="dp-title">Diagram</span>
       <button class="pin-btn" onclick="closeDiagPropsPanel()" title="Close">✕</button>
     </div>
 
@@ -418,8 +417,8 @@
     <div class="dp-section">
       <div class="dp-section-title">MODE</div>
       <div class="dp-mode-chips" id="dp-mode-chips">
-        <button class="dp-chip" data-mode="Auto"   style="color:#39d353;border-color:#39d353;" onclick="dpSetMode('Auto')">Auto</button>
-        <button class="dp-chip" data-mode="Origin" style="color:#f5a623;border-color:#f5a623;" onclick="dpSetMode('Origin')">Origin</button>
+        <button class="dp-chip dp-chip-auto" data-mode="Auto" onclick="dpSetMode('Auto')">Auto</button>
+        <button class="dp-chip dp-chip-origin" data-mode="Origin" onclick="dpSetMode('Origin')">Origin</button>
       </div>
     </div>
 
@@ -428,12 +427,12 @@
       <div class="dp-section-title">DIAGRAM TYPE</div>
       <div class="dp-type-chips">
         <button class="dp-type-chip" id="dp-type-main" onclick="dpSetType('Main')">
-          <div style="font-size:11px;margin-bottom:2px;">Main</div>
-          <div style="font-size:8px;opacity:.7;">Entry point — gọi đầu tiên</div>
+          <div class="dp-chip-title">Main</div>
+          <div class="dp-chip-desc">Entry point — gọi đầu tiên</div>
         </button>
         <button class="dp-type-chip" id="dp-type-sub" onclick="dpSetType('SubRoutine')">
-          <div style="font-size:11px;margin-bottom:2px;">SubRoutine</div>
-          <div style="font-size:8px;opacity:.7;">Được gọi từ Main</div>
+          <div class="dp-chip-title">SubRoutine</div>
+          <div class="dp-chip-desc">Được gọi từ Main</div>
         </button>
       </div>
     </div>
@@ -445,25 +444,25 @@
     </div>
 
     <!-- Save button -->
-    <div style="padding:10px 12px;">
-      <button class="btn a" style="width:100%" onclick="saveDiagPropsPanel()">✓ Save Properties</button>
+    <div class="dp-save-row">
+      <button class="btn a btn-full" onclick="saveDiagPropsPanel()">✓ Save Properties</button>
     </div>
   </div><!-- /dp-panel -->
 
-  </div><!-- /rpanel-content -->
-</div><!-- /right-panel -->
+</aside><!-- /right-panel -->
 
 <!-- Status Bar -->
-<div class="statusbar">
+<footer class="statusbar">
   <div class="s-dot" id="s-dot"></div>
   <span id="s-tool">SELECT</span>
   <span>Steps: <b id="s-steps">0</b></span>
   <span>Trans: <b id="s-trans">0</b></span>
   <span>Bars: <b id="s-bars">0</b></span>
   <span>Conns: <b id="s-conns">0</b></span>
-  <span style="margin-left:auto">Zoom: <b id="s-zoom">100%</b></span>
+  <span class="status-spacer">Zoom: <b id="s-zoom">100%</b></span>
   <span>X:<b id="s-cx">0</b> Y:<b id="s-cy">0</b></span>
-</div>
+</footer>
+</main>
 
 <!-- Context Menu -->
 <div class="ctx" id="ctx">
@@ -485,38 +484,38 @@
   <div class="tree-ctx-i r" id="tctx-del" onclick="tctxDel()">⊘ Delete</div>
 </div>
 <!-- Move-to-Folder submenu -->
-<div class="tree-ctx" id="tree-ctx-folders" style="min-width:160px;"></div>
+<div class="tree-ctx tree-ctx-folders" id="tree-ctx-folders"></div>
 
 <!-- Export Tables Modal -->
-<div class="modal-bg" id="modal-tables" style="align-items:stretch;padding:20px;">
-  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:6px;display:flex;flex-direction:column;width:100%;max-width:1200px;max-height:96vh;box-shadow:0 20px 60px rgba(0,0,0,.8);">
+<div class="modal-bg modal-bg-stretch" id="modal-tables">
+  <section class="modal modal-wide">
     <!-- Modal header -->
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--s2);border-radius:6px 6px 0 0;flex-shrink:0;">
-      <span style="font-family:'Orbitron',monospace;font-size:12px;color:var(--cyan);letter-spacing:2px;">⊞ EXPORT TABLES</span>
-      <span id="et-diag-name" style="font-size:10px;color:var(--text2);"></span>
-      <div style="margin-left:auto;display:flex;gap:6px;">
-        <button class="btn" onclick="etExportHTML()" style="border-color:#22d3ee;color:#22d3ee;">⬆ Export HTML</button>
+    <header class="modal-header">
+      <span class="modal-title-accent">⊞ EXPORT TABLES</span>
+      <span id="et-diag-name" class="modal-subtitle"></span>
+      <div class="modal-actions">
+        <button class="btn btn-cyan" onclick="etExportHTML()">⬆ Export HTML</button>
         <button class="btn a" onclick="etExportCSV()">⬆ Export CSV</button>
         <button class="btn" onclick="closeModal('modal-tables')">✕ Close</button>
       </div>
-    </div>
+    </header>
     <!-- Tab bar -->
-    <div style="display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;">
+    <nav class="modal-tabbar" aria-label="Export table tabs">
       <button class="et-tab active" id="et-tab-steps" onclick="etShowTab('steps')">📋 Steps</button>
       <button class="et-tab" id="et-tab-transitions" onclick="etShowTab('transitions')">⇌ Transitions</button>
       <button class="et-tab" id="et-tab-branches" onclick="etShowTab('branches')">⊸ Parallel Branches</button>
       <button class="et-tab" id="et-tab-vars" onclick="etShowTab('vars')">⊞ Variables</button>
-    </div>
+    </nav>
     <!-- Table area -->
-    <div style="flex:1;overflow:auto;padding:0;" id="et-content"></div>
-  </div>
+    <div class="modal-table-content" id="et-content"></div>
+  </section>
 </div>
 
 <!-- Unit Modal -->
 <div class="modal-bg" id="modal-unit">
   <div class="modal">
     <h2 id="modal-unit-title">ADD UNIT</h2>
-    <div style="font-size:9px;color:var(--text3);margin-bottom:6px;">UNIT NAME</div>
+    <div class="modal-field-label">UNIT NAME</div>
     <input type="text" id="modal-unit-name" placeholder="e.g. Unit_01_Dispensing">
     <div class="modal-btns">
       <button class="btn" onclick="closeModal('modal-unit')">Cancel</button>
@@ -527,24 +526,24 @@
 
 <!-- Diagram Metadata Modal -->
 <div class="modal-bg" id="modal-diag-meta">
-  <div class="modal" style="min-width:400px;">
+  <div class="modal modal-meta">
     <h2 id="modal-meta-title">DIAGRAM PROPERTIES</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+    <div class="modal-grid-2">
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">DIAGRAM NAME</div>
-        <input type="text" id="meta-name" placeholder="GRAFCET_Auto" style="width:100%">
+        <div class="modal-field-label modal-field-label-tight">DIAGRAM NAME</div>
+        <input type="text" id="meta-name" placeholder="GRAFCET_Auto" class="field-full">
       </div>
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">MACHINE</div>
-        <input type="text" id="meta-machine" placeholder="PaintMachine" style="width:100%">
+        <div class="modal-field-label modal-field-label-tight">MACHINE</div>
+        <input type="text" id="meta-machine" placeholder="PaintMachine" class="field-full">
       </div>
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">UNIT</div>
-        <input type="text" id="meta-unit" placeholder="Unit_01_Dispensing" style="width:100%">
+        <div class="modal-field-label modal-field-label-tight">UNIT</div>
+        <input type="text" id="meta-unit" placeholder="Unit_01_Dispensing" class="field-full">
       </div>
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">MODE</div>
-        <select id="meta-mode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;">
+        <div class="modal-field-label modal-field-label-tight">MODE</div>
+        <select id="meta-mode" class="modal-select field-full">
           <option value="Auto">Auto</option>
           <option value="Manual">Manual</option>
           <option value="Origin">Origin</option>
@@ -554,18 +553,18 @@
         </select>
       </div>
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">DIAGRAM TYPE</div>
-        <select id="meta-dtype" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 8px;border-radius:3px;outline:none;">
+        <div class="modal-field-label modal-field-label-tight">DIAGRAM TYPE</div>
+        <select id="meta-dtype" class="modal-select field-full">
           <option value="Main">Main — entry point</option>
           <option value="SubRoutine">SubRoutine — called from Main</option>
         </select>
       </div>
       <div>
-        <div style="font-size:9px;color:var(--text3);margin-bottom:4px;">DESCRIPTION</div>
-        <input type="text" id="meta-desc" placeholder="Optional description" style="width:100%">
+        <div class="modal-field-label modal-field-label-tight">DESCRIPTION</div>
+        <input type="text" id="meta-desc" placeholder="Optional description" class="field-full">
       </div>
     </div>
-    <div id="meta-codepath" style="font-size:9px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:7px 10px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;"></div>
+    <div id="meta-codepath" class="meta-codepath"></div>
     <div class="modal-btns">
       <button class="btn" onclick="closeModal('modal-diag-meta')">Cancel</button>
       <button class="btn a" onclick="confirmDiagMeta()">✓ Save</button>
