@@ -45,27 +45,147 @@ const updateSelectionBox = ({ x, y }) => {
   setAttrs(getById('sel-box'), { x: sx, y: sy, width: sw, height: sh });
 };
 
+const getPortSnapCandidates = (elements = state) => {
+  const steps = Array.isArray(elements) ? elements.filter(({ type }) => type === 'step') : (elements.steps || []);
+  const transitions = Array.isArray(elements) ? elements.filter(({ type }) => type === 'transition') : (elements.transitions || []);
+  const parallels = Array.isArray(elements) ? elements.filter(({ type }) => type === 'parallel') : (elements.parallels || []);
+  const candidates = [];
+  const addCandidate = (elementId, portId, point) => {
+    if (point) candidates.push({ x: point.x, portId, elementId });
+  };
+
+  steps.forEach(({ id }) => {
+    addCandidate(id, 'top', getPortXY(id, 'top'));
+    addCandidate(id, 'bottom', getPortXY(id, 'bottom'));
+  });
+  transitions.forEach(({ id }) => {
+    addCandidate(id, 'top', getPortXY(id, 'top'));
+    addCandidate(id, 'bottom', getPortXY(id, 'bottom'));
+  });
+  parallels.forEach(({ id, ports = 3, type }) => {
+    const isSplit = type === 'split';
+    addCandidate(id, isSplit ? 'top' : 'bottom', getPortXY(id, isSplit ? 'top' : 'bottom'));
+    for (let index = 0; index < ports; index += 1) {
+      const portId = isSplit ? `bottom-${index}` : `top-${index}`;
+      addCandidate(id, portId, getPortXY(id, portId));
+    }
+  });
+
+  return candidates;
+};
+
+const getNearestSnapCandidate = (dragCenterX, candidates, threshold) => candidates
+  .map((candidate) => ({ ...candidate, distance: Math.abs(dragCenterX - candidate.x) }))
+  .filter(({ distance }) => distance <= threshold)
+  .sort((a, b) => a.distance - b.distance)[0] || null;
+
+const updateSnapState = (dragCenterX, candidates, currentSnapState) => {
+  const nearestEnterCandidate = getNearestSnapCandidate(dragCenterX, candidates, SNAP_ENTER_THRESHOLD);
+
+  if (currentSnapState?.isSnapped) {
+    const currentCandidate = candidates.find(({ portId, elementId }) => (
+      portId === currentSnapState.portId && elementId === currentSnapState.elementId
+    ));
+    const currentSnapX = currentCandidate ? currentCandidate.x : currentSnapState.snapX;
+    const currentDistance = Math.abs(dragCenterX - currentSnapX);
+
+    if (currentDistance <= SNAP_EXIT_THRESHOLD) {
+      if (nearestEnterCandidate && nearestEnterCandidate.x !== currentSnapX) {
+        return {
+          isSnapped: true,
+          snapX: nearestEnterCandidate.x,
+          portId: nearestEnterCandidate.portId,
+          elementId: nearestEnterCandidate.elementId,
+        };
+      }
+      return { ...currentSnapState, snapX: currentSnapX };
+    }
+  }
+
+  if (!nearestEnterCandidate) return null;
+  return {
+    isSnapped: true,
+    snapX: nearestEnterCandidate.x,
+    portId: nearestEnterCandidate.portId,
+    elementId: nearestEnterCandidate.elementId,
+  };
+};
+
+const applySnapToDrag = (mouseX, snapState) => (snapState?.isSnapped ? snapState.snapX : mouseX);
+
+const drawSnapGuideLine = (snapState, canvasCtx) => {
+  if (!canvasCtx) return;
+  if (!snapState?.isSnapped) {
+    drawGrid(false);
+    return;
+  }
+
+  const port = getPortXY(snapState.elementId, snapState.portId);
+  if (!port) return;
+
+  const canvas = canvasCtx.canvas;
+  const sx = viewX + snapState.snapX * viewScale;
+  const sy = viewY + port.y * viewScale;
+  canvasCtx.save();
+  canvasCtx.beginPath();
+  canvasCtx.setLineDash([6, 6]);
+  canvasCtx.moveTo(sx, sy);
+  canvasCtx.lineTo(sx, canvas.height);
+  canvasCtx.strokeStyle = '#f5a623';
+  canvasCtx.lineWidth = 1.5;
+  canvasCtx.stroke();
+  canvasCtx.restore();
+};
+
+const clearSnapGuideLine = () => {
+  dragSnapState = null;
+  drawSnapGuideLine(null, getById('grid-canvas')?.getContext('2d'));
+};
+
+const getDragElementWidth = (id) => {
+  if (state.steps.some((item) => item.id === id)) return SW;
+  if (state.transitions.some((item) => item.id === id)) return TW;
+  const pb = state.parallels.find((item) => item.id === id);
+  return pb ? pb.width : 0;
+};
+
+const refreshDragSnapGuide = (nextSnapState) => {
+  const wasSnapped = dragSnapState?.isSnapped;
+  dragSnapState = nextSnapState;
+  if (wasSnapped || dragSnapState?.isSnapped) {
+    drawGrid();
+  }
+};
+
 const dragSelectedElements = ({ x, y }) => {
+  const primaryDragOffset = dragMap.get(dragSnapPrimaryId);
+  const primaryWidth = primaryDragOffset ? getDragElementWidth(dragSnapPrimaryId) : 0;
+  const primaryCenterX = primaryDragOffset ? x - primaryDragOffset.dx + primaryWidth / 2 : x;
+  const nextSnapState = updateSnapState(primaryCenterX, dragSnapCandidates, dragSnapState);
+  const snappedCenterX = applySnapToDrag(primaryCenterX, nextSnapState);
+  const snapDeltaX = snappedCenterX - primaryCenterX;
+
   dragMap.forEach(({ dx, dy }, id) => {
     const s = state.steps.find((item) => item.id === id);
     if (s) {
-      s.x = snap(x - dx);
+      s.x = nextSnapState?.isSnapped ? x - dx + snapDeltaX : snap(x - dx);
       s.y = snap(y - dy);
     }
 
     const t = state.transitions.find((item) => item.id === id);
     if (t) {
-      t.x = snap(x - dx);
+      t.x = nextSnapState?.isSnapped ? x - dx + snapDeltaX : snap(x - dx);
       t.y = snap(y - dy);
     }
 
     const pb = state.parallels.find((item) => item.id === id);
     if (pb) {
-      pb.x = snap(x - dx);
+      pb.x = nextSnapState?.isSnapped ? x - dx + snapDeltaX : snap(x - dx);
       pb.y = snap(y - dy);
     }
   });
 
+  refreshDragSnapGuide(nextSnapState);
   render();
   if (selIds.size === 1) updateProps();
 };
@@ -148,6 +268,9 @@ const cvUp = () => {
   if (dragging) {
     dragging = false;
     dragMap.clear();
+    dragSnapCandidates = [];
+    dragSnapPrimaryId = null;
+    clearSnapGuideLine();
     afterChange();
   }
   if (resizingBar) {
@@ -206,6 +329,9 @@ const startElementDrag = (e, id) => {
   }
 
   dragging = true;
+  dragSnapPrimaryId = id;
+  dragSnapState = null;
+  dragSnapCandidates = getPortSnapCandidates(state).filter(({ elementId }) => !selIds.has(elementId));
   const { x, y } = getCanvasPoint(e);
   selIds.forEach((sid) => {
     const r = getElRect(sid);
@@ -536,6 +662,10 @@ Object.assign(window, {
   hideCtx,
   ctxEdit,
   ctxDup,
+  getPortSnapCandidates,
+  updateSnapState,
+  applySnapToDrag,
+  drawSnapGuideLine,
   ctxConn,
   ctxDel,
   updateStats,
