@@ -22,7 +22,8 @@ let project = {
   devices:[],              // [{id, name, open, signals:[{id,name,dataType,ioType,address}]}]
   variables:{ imported:[], user:[] },
   excelVars:[],            // [{label, format, signalAddresses:{...}, comment, _source:'excel'}]
-  unitConfig:{}            // {[unitLabel]: {label, unitIndex, originBaseAddr, autoBaseAddr, flags, io}}
+  unitConfig:{},           // {[unitLabel]: {label, unitIndex, originBaseAddr, autoBaseAddr, flags, io}}
+  ioMapping:{ physicalIOs:[], entries:[] }
 };
 let openTabs = [];         // [{diagramId}]
 let activeDiagramId = null;
@@ -141,6 +142,28 @@ function ensureProjectVariables() {
   return project.variables;
 }
 
+function normalizeIOMappingDirection(v) {
+  const raw = String(v || '').trim().toLowerCase();
+  if (raw === 'input' || raw === 'in') return 'Input';
+  if (raw === 'output' || raw === 'out' || raw === 'ouput') return 'Output';
+  return '';
+}
+
+function ensureProjectIOMapping() {
+  if (!project.ioMapping || typeof project.ioMapping !== 'object') {
+    project.ioMapping = { physicalIOs: [], entries: [] };
+  }
+  if (!Array.isArray(project.ioMapping.physicalIOs)) project.ioMapping.physicalIOs = [];
+  if (!Array.isArray(project.ioMapping.entries)) project.ioMapping.entries = [];
+  project.ioMapping.physicalIOs = project.ioMapping.physicalIOs.map(function (item, idx) {
+    const rec = Object.assign({}, item || {});
+    if (!rec.id) rec.id = 'pio-' + idx + '-' + Date.now();
+    rec.direction = normalizeIOMappingDirection(rec.direction || rec.Direction);
+    return rec;
+  });
+  return project.ioMapping;
+}
+
 function normalizeVariableRecord(v, bucket) {
   const out = Object.assign({}, v || {});
   if (!out.id) out.id = 'var-' + bucket + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
@@ -186,6 +209,7 @@ function loadProject() {
       if (!project.machineName)   project.machineName = project.name || 'Machine';
       if (!project.excelVars)     project.excelVars = [];
       if (!project.unitConfig)    project.unitConfig = {};
+      ensureProjectIOMapping();
       if (syncStructDataFromProjectData()) {
         saveProject();
       }

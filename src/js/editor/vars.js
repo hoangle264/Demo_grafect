@@ -492,12 +492,91 @@ function updateMetaCodePath() {
 }
 
 // Unit modal enter
-document.addEventListener('DOMContentLoaded',()=>{
-  const ui=document.getElementById('modal-unit-name');
-  if(ui) ui.addEventListener('keydown',e=>{ if(e.key==='Enter') confirmUnit(); });
-  // Meta modal live preview
-  ['meta-name','meta-machine','meta-unit','meta-mode','meta-dtype'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el) el.addEventListener('input',updateMetaCodePath);
+
+function ioNormalizeTag(v) {
+  return String(v || '').trim().toUpperCase().replace(/[-_\s]+/g, '.').replace(/\.+/g, '.');
+}
+
+function ioCollectCandidateVariables() {
+  const out = [];
+  gvtGetEntries().forEach(function (entry) {
+    const v = entry.data || {};
+    const sigs = entry.source === 'unit' ? gvtGetUnitSigList() : gvtGetSigList(v);
+    const base = String(v.label || '').trim();
+    sigs.forEach(function (sig) {
+      const dir = sig.varType === 'Input' ? 'Input' : (sig.varType === 'Output' ? 'Output' : '');
+      if (!dir) return;
+      const appVariable = base ? (base + '.' + sig.name) : sig.name;
+      out.push({ appVariable: appVariable, direction: dir, norm: ioNormalizeTag(appVariable) });
+    });
   });
-});
+  return out;
+}
+
+function ioAutoMatchEntries() {
+  if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+  const io = project.ioMapping;
+  const cands = ioCollectCandidateVariables();
+  io.entries = io.physicalIOs.map(function (p) {
+    const norm = ioNormalizeTag(p.deviceTag);
+    const sameDir = cands.filter(function (c) { return c.direction === p.direction; });
+    let best = null;
+    sameDir.forEach(function (c) {
+      const score = c.norm === norm ? 1 : (c.norm.endsWith(norm) || norm.endsWith(c.norm) ? 0.7 : 0);
+      if (!best || score > best.matchScore) best = { physicalIOId: p.id, appVariable: c.appVariable, status: score >= 1 ? 'matched' : 'unmatched', matchScore: score };
+    });
+    if (!best || best.matchScore <= 0) return { physicalIOId: p.id, appVariable: '', status: 'unmatched', matchScore: 0 };
+    return best;
+  });
+  saveProject();
+}
+
+function ioBuildCandidateOptions(direction) {
+  return ioCollectCandidateVariables().filter(function (c) { return c.direction === direction; }).map(function (c) { return c.appVariable; });
+}
+
+function ioConfirmManual(physicalIOId) {
+  const sel = document.getElementById('iomap-sel-' + physicalIOId);
+  if (!sel) return;
+  const entry = (project.ioMapping.entries || []).find(function (e) { return e.physicalIOId === physicalIOId; });
+  if (!entry) return;
+  entry.appVariable = sel.value || '';
+  entry.status = entry.appVariable ? 'manual' : 'unmatched';
+  if (entry.matchScore < 1) entry.matchScore = entry.appVariable ? 1 : 0;
+  saveProject();
+  renderIOMappingTable(document.getElementById('iomap-filter')?.value || 'All');
+}
+
+function renderIOMappingTable(filter) {
+  if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+  const tbody = document.getElementById('iomap-tbody');
+  if (!tbody) return;
+  const io = project.ioMapping || { physicalIOs: [], entries: [] };
+  const byId = Object.create(null);
+  (io.entries || []).forEach(function (e) { byId[e.physicalIOId] = e; });
+  const eff = filter || 'All';
+  const rows = io.physicalIOs.filter(function (p) {
+    const e = byId[p.id] || { status: 'unmatched' };
+    if (eff === 'Input') return p.direction === 'Input';
+    if (eff === 'Output') return p.direction === 'Output';
+    if (eff === 'Unmatched') return e.status === 'unmatched';
+    return true;
+  });
+  tbody.innerHTML = '';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="vt-empty">No IO mapping rows</td></tr>';
+    return;
+  }
+  rows.forEach(function (p) {
+    const e = byId[p.id] || { physicalIOId: p.id, appVariable: '', status: 'unmatched', matchScore: 0 };
+    const tr = document.createElement('tr');
+    const opts = ioBuildCandidateOptions(p.direction);
+    const manualCell = e.status === 'unmatched'
+      ? '<select id="iomap-sel-' + p.id + '" class="dp-select" style="width:100%;"><option value=""></option>' + opts.map(function (o) { return '<option value="' + esc2(o) + '">' + esc2(o) + '</option>'; }).join('') + '</select>'
+      : esc2(e.appVariable || '');
+    const action = e.status === 'unmatched' ? '<button class="btn" onclick="ioConfirmManual(\'' + p.id + '\')">Confirm</button>' : '';
+    tr.innerHTML = '<td>' + esc2(p.deviceTag || '') + '</td><td>' + esc2(p.plcAddress || '') + '</td><td>' + esc2(p.direction || '') + '</td><td>' + esc2(p.description || '') + '</td><td>' + manualCell + '</td><td>' + esc2(e.status || 'unmatched') + '</td><td>' + esc2(String(e.matchScore ?? 0)) + '</td><td>' + action + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+

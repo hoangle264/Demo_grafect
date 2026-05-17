@@ -18,12 +18,12 @@ function renderTabs() {
       bar.appendChild(tab);
       return;
     }
-    if(t.id === VARS_TAB_ID) {
+    if(t.id === IO_MAPPING_TAB_ID) {
       const tab = document.createElement('div');
-      tab.className = 'tab' + (activeDiagramId===VARS_TAB_ID?' active':'');
-      tab.dataset.id = VARS_TAB_ID;
-      tab.innerHTML = `<span class="tab-name">📋 Variables</span><button class="tab-close" onclick="closeTab('${VARS_TAB_ID}',event)">×</button>`;
-      tab.addEventListener('click', e=>{ if(!e.target.classList.contains('tab-close')) openVarsTab(); });
+      tab.className = 'tab' + (activeDiagramId===IO_MAPPING_TAB_ID?' active':'');
+      tab.dataset.id = IO_MAPPING_TAB_ID;
+      tab.innerHTML = `<span class="tab-name">🔌 IO Mapping</span><button class="tab-close" onclick="closeTab('${IO_MAPPING_TAB_ID}',event)">×</button>`;
+      tab.addEventListener('click', e=>{ if(!e.target.classList.contains('tab-close')) openIOMappingTab(); });
       bar.appendChild(tab);
       return;
     }
@@ -133,7 +133,7 @@ function renderTree() {
   const ioItem = document.createElement('div');
   ioItem.className = 'tree-leaf';
   ioItem.innerHTML = `${treeIcon('io','io')}<span class="tree-leaf-name">IO Mapping</span>`;
-  ioItem.addEventListener('click', ()=>openVarsTab());
+  ioItem.addEventListener('click', ()=>openIOMappingTab());
   machineBody.appendChild(ioItem);
 
   const devSection = makeDevicesSection();

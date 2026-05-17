@@ -55,6 +55,7 @@ function handleImport(e) {
               signals: (d.signals||[]).map(s=>({...s}))
             })),
             variables: raw.variables ? JSON.parse(JSON.stringify(raw.variables)) : {imported:[], user:[]},
+            ioMapping: JSON.parse(JSON.stringify(raw.ioMapping || { physicalIOs:[], entries:[] })),
             excelVars: (raw.excelVars||[]).map(v=>({...v})),
             unitConfig: JSON.parse(JSON.stringify(raw.unitConfig||{})),
             folders: (raw.folders||[]),
@@ -91,6 +92,10 @@ function handleImport(e) {
           if(typeof ensureProjectVariables === 'function') ensureProjectVariables();
           (raw.variables.imported||[]).forEach(v=>typeof upsertProjectVariable === 'function' ? upsertProjectVariable('imported', v) : project.variables.imported.push(v));
           (raw.variables.user||[]).forEach(v=>typeof upsertProjectVariable === 'function' ? upsertProjectVariable('user', v) : project.variables.user.push(v));
+        }
+        if(!mode && raw.ioMapping) {
+          if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+          project.ioMapping = JSON.parse(JSON.stringify(raw.ioMapping || { physicalIOs:[], entries:[] }));
         }
 
         // Add diagrams
@@ -171,6 +176,7 @@ function exportProject() {
       signals: (d.signals||[]).map(s=>({...s}))
     })),
     variables: JSON.parse(JSON.stringify(project.variables || {imported:[], user:[]})),
+    ioMapping: JSON.parse(JSON.stringify(project.ioMapping || { physicalIOs:[], entries:[] })),
     unitConfig: JSON.parse(JSON.stringify(project.unitConfig || {})),
     folders: (project.folders||[]),                // legacy folders
     diagrams,

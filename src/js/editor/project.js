@@ -10,26 +10,51 @@
 //  VIRTUAL TAB: GLOBAL VARIABLES  (__vars__)
 // ═══════════════════════════════════════════════════════════
 const VARS_TAB_ID = '__vars__';
+const IO_MAPPING_TAB_ID = '__io_mapping__';
 const STRUCT_TAB_PREFIX = '__struct__:';
 
 function openVarsTab() {
-  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID) flushState();
+  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && activeDiagramId !== IO_MAPPING_TAB_ID) flushState();
   if(!openTabs.find(t=>t.id===VARS_TAB_ID)) openTabs.push({id:VARS_TAB_ID});
   activeDiagramId = VARS_TAB_ID;
   localStorage.setItem('gf2-active', VARS_TAB_ID);
   // Show vars panel, hide canvas + vartable
   const gvtPanel = document.getElementById('gvt-main-panel');
   const structPanel = document.getElementById('struct-main-panel');
+  const ioPanel = document.getElementById('iomap-main-panel');
   const cw = document.getElementById('canvas-wrap');
   const vtp = document.getElementById('vartable-panel');
   if(gvtPanel) gvtPanel.style.display = 'flex';
   if(structPanel) structPanel.style.display = 'none';
+  if(ioPanel) ioPanel.style.display = 'none';
   if(cw) cw.style.display = 'none';
   if(vtp) vtp.style.display = 'none';
   selIds.clear();
   renderTabs();
   renderTree();
   if(typeof renderGlobalVarTable === 'function') renderGlobalVarTable();
+}
+
+function openIOMappingTab() {
+  if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && activeDiagramId !== IO_MAPPING_TAB_ID) flushState();
+  if(!openTabs.find(t=>t.id===IO_MAPPING_TAB_ID)) openTabs.push({id:IO_MAPPING_TAB_ID});
+  activeDiagramId = IO_MAPPING_TAB_ID;
+  localStorage.setItem('gf2-active', IO_MAPPING_TAB_ID);
+  const gvtPanel = document.getElementById('gvt-main-panel');
+  const structPanel = document.getElementById('struct-main-panel');
+  const ioPanel = document.getElementById('iomap-main-panel');
+  const cw = document.getElementById('canvas-wrap');
+  const vtp = document.getElementById('vartable-panel');
+  if(gvtPanel) gvtPanel.style.display = 'none';
+  if(structPanel) structPanel.style.display = 'none';
+  if(ioPanel) ioPanel.style.display = 'flex';
+  if(cw) cw.style.display = 'none';
+  if(vtp) vtp.style.display = 'none';
+  selIds.clear();
+  renderTabs();
+  renderTree();
+  if (typeof renderIOMappingTable === 'function') renderIOMappingTable();
 }
 
 function openStructTab(devId) {
@@ -82,10 +107,12 @@ function renderStructPanel(devId) {
 function _showCanvas() {
   const gvtPanel = document.getElementById('gvt-main-panel');
   const structPanel = document.getElementById('struct-main-panel');
+  const ioPanel = document.getElementById('iomap-main-panel');
   const cw = document.getElementById('canvas-wrap');
   const vtp = document.getElementById('vartable-panel');
   if(gvtPanel) gvtPanel.style.display = 'none';
   if(structPanel) structPanel.style.display = 'none';
+  if(ioPanel) ioPanel.style.display = 'none';
   if(cw) cw.style.display = '';
   if(vtp) vtp.style.display = '';
 }
@@ -110,6 +137,7 @@ function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {
 
 function openTab(id) {
   if(id === VARS_TAB_ID) { openVarsTab(); return; }
+  if(id === IO_MAPPING_TAB_ID) { openIOMappingTab(); return; }
   if(String(id).startsWith(STRUCT_TAB_PREFIX)) { openStructTab(String(id).slice(STRUCT_TAB_PREFIX.length)); return; }
   _showCanvas();
   // Flush current state if active
@@ -143,7 +171,7 @@ function openTab(id) {
 
 function closeTab(id, e) {
   if (e) e.stopPropagation();
-  if (activeDiagramId === id && id !== VARS_TAB_ID && !String(id).startsWith(STRUCT_TAB_PREFIX)) flushState();
+  if (activeDiagramId === id && id !== VARS_TAB_ID && id !== IO_MAPPING_TAB_ID && !String(id).startsWith(STRUCT_TAB_PREFIX)) flushState();
   openTabs = openTabs.filter(t=>t.id!==id);
   if (activeDiagramId === id) {
     if (openTabs.length > 0) openTab(openTabs[openTabs.length-1].id);
@@ -210,7 +238,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Enter'&&document.getElemen
 function newProject() {
   if (!confirm('Create new project? Current project will be cleared.')) return;
   project.diagrams.forEach(d=>deleteDiagramData(d.id));
-  project = { id:'proj-'+Date.now(), name:'New Project', machineName:'Machine', diagrams:[], folders:[], units:[], devices:[], variables:{imported:[], user:[]}, excelVars:[], unitConfig:{} };
+  project = { id:'proj-'+Date.now(), name:'New Project', machineName:'Machine', diagrams:[], folders:[], units:[], devices:[], variables:{imported:[], user:[]}, excelVars:[], unitConfig:{}, ioMapping:{ physicalIOs:[], entries:[] } };
   openTabs = []; activeDiagramId=null;
   saveProject();
   addDiagram(true);

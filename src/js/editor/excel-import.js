@@ -185,12 +185,43 @@ function eiParseStructCSV(rows, structTypeName) {
   return { vars, errors };
 }
 
-// ── Entry point ────────────────────────────────────────────────────────────
+function eiParsePhysicalIOCSV(rows) {
+  const errors = [];
+  const physicalIOs = [];
+  function norm(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  const header = (rows[0] || []).map(norm);
+  const hasHeader = header.includes('devicetag') || header.includes('plcaddress') || header.includes('direction');
+  const idxTag = hasHeader ? header.indexOf('devicetag') : 0;
+  const idxAddr = hasHeader ? header.indexOf('plcaddress') : 1;
+  const idxDir = hasHeader ? header.indexOf('direction') : 2;
+  const idxDesc = hasHeader ? header.indexOf('description') : 3;
+  rows.forEach(function (cols, rowIdx) {
+    if (hasHeader && rowIdx === 0) return;
+    const deviceTag = String(cols[idxTag] || '').trim();
+    const plcAddress = String(cols[idxAddr] || '').trim();
+    const direction = typeof normalizeIOMappingDirection === 'function' ? normalizeIOMappingDirection(cols[idxDir] || '') : '';
+    const description = String(cols[idxDesc] || '').trim();
+    if (!deviceTag || !plcAddress) { errors.push('Dòng ' + (rowIdx + 1) + ': thiếu DeviceTag hoặc PLCAddress'); return; }
+    if (!direction) { errors.push('Dòng ' + (rowIdx + 1) + ': Direction phải là input/output'); return; }
+    physicalIOs.push({ id: 'pio-' + rowIdx + '-' + Date.now(), deviceTag: deviceTag, plcAddress: plcAddress, direction: direction, description: description });
+  });
+  return { physicalIOs: physicalIOs, errors: errors };
+}
+
 function eiImportFromCSVText(csvText, csvType, options) {
   const rows = eiParseCSV(csvText);
   if (!rows.length) return { ok: false, message: 'File CSV trống hoặc không đọc được.', added: 0 };
 
-  // ── Unit Station ──
+  if (csvType === 'physical-io') {
+    if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+    const parsed = eiParsePhysicalIOCSV(rows);
+    if (parsed.errors.length) return { ok: false, message: 'Lỗi validate:\n' + parsed.errors.join('\n'), added: 0 };
+    project.ioMapping.physicalIOs = parsed.physicalIOs;
+    if (typeof ioAutoMatchEntries === 'function') ioAutoMatchEntries();
+    if (typeof saveProject === 'function') saveProject();
+    return { ok: true, message: 'Import thành công ' + parsed.physicalIOs.length + ' Physical IO.', added: parsed.physicalIOs.length };
+  }
+
   if (csvType === 'unit') {
     const { configs, errors } = eiParseUnitCSV(rows);
     if (errors.length) return { ok: false, message: 'Lỗi validate:\n' + errors.join('\n'), added: 0 };
@@ -276,6 +307,9 @@ function showExcelImportModal() {
             </label>
             <label style="font-size:10px;color:var(--cyan);display:flex;align-items:center;gap:4px;cursor:pointer;">
               <input type="radio" name="ei-import-type" value="struct" checked onchange="eiOnImportTypeChange()"> Struct Data
+            </label>
+            <label style="font-size:10px;color:var(--cyan);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="radio" name="ei-import-type" value="physical-io" onchange="eiOnImportTypeChange()"> Physical IO
             </label>
           </div>
         </div>

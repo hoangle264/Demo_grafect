@@ -258,7 +258,25 @@
     </div>
   </section>
 
-  <!-- Structure Tab Panel (virtual tab) -->
+  <section id="iomap-main-panel" class="virtual-panel is-hidden" aria-label="IO Mapping" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
+    <div class="sub-panel-head sub-panel-head-fixed">
+      <span class="sub-panel-title">🔌 IO MAPPING</span>
+      <button class="panel-head-btn btn-cyan" onclick="showExcelImportModal()" title="Import Physical IO">📥 Import</button>
+      <select id="iomap-filter" class="dp-select" style="width:140px;height:28px;" onchange="renderIOMappingTable(this.value)">
+        <option value="All">All</option>
+        <option value="Input">Input</option>
+        <option value="Output">Output</option>
+        <option value="Unmatched">Unmatched</option>
+      </select>
+    </div>
+    <div class="panel-scroll">
+      <table class="vt-table table-full">
+        <thead><tr><th>DeviceTag</th><th>PLCAddress</th><th>Direction</th><th>Description</th><th>App Variable</th><th>Status</th><th>Score</th><th>Action</th></tr></thead>
+        <tbody id="iomap-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="struct-main-panel" class="virtual-panel is-hidden" aria-label="Structure">
     <div class="sub-panel-head sub-panel-head-fixed">
       <span class="sub-panel-title" id="struct-panel-title">STRUCTURE</span>
