@@ -13,22 +13,35 @@ const VARS_TAB_ID = '__vars__';
 const IO_MAPPING_TAB_ID = '__io_mapping__';
 const STRUCT_TAB_PREFIX = '__struct__:';
 
+function showMainView(view) {
+  const panels = {
+    vars: document.getElementById('gvt-main-panel'),
+    struct: document.getElementById('struct-main-panel'),
+    iomap: document.getElementById('iomap-main-panel'),
+    canvas: document.getElementById('canvas-wrap'),
+    vartable: document.getElementById('vartable-panel')
+  };
+  if(panels.vars) panels.vars.style.display = view === 'vars' ? 'flex' : 'none';
+  if(panels.struct) panels.struct.style.display = view === 'struct' ? 'flex' : 'none';
+  if(panels.iomap) panels.iomap.style.display = view === 'iomap' ? 'flex' : 'none';
+  if(panels.canvas) panels.canvas.style.display = view === 'canvas' ? '' : 'none';
+  if(panels.vartable) panels.vartable.style.display = view === 'canvas' ? '' : 'none';
+}
+
+function isVirtualTab(id) {
+  return id === VARS_TAB_ID || id === IO_MAPPING_TAB_ID || String(id).startsWith(STRUCT_TAB_PREFIX);
+}
+
+function flushActiveDiagramIfNeeded() {
+  if(activeDiagramId && !isVirtualTab(activeDiagramId)) flushState();
+}
+
 function openVarsTab() {
-  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && activeDiagramId !== IO_MAPPING_TAB_ID) flushState();
+  flushActiveDiagramIfNeeded();
   if(!openTabs.find(t=>t.id===VARS_TAB_ID)) openTabs.push({id:VARS_TAB_ID});
   activeDiagramId = VARS_TAB_ID;
   localStorage.setItem('gf2-active', VARS_TAB_ID);
-  // Show vars panel, hide canvas + vartable
-  const gvtPanel = document.getElementById('gvt-main-panel');
-  const structPanel = document.getElementById('struct-main-panel');
-  const ioPanel = document.getElementById('iomap-main-panel');
-  const cw = document.getElementById('canvas-wrap');
-  const vtp = document.getElementById('vartable-panel');
-  if(gvtPanel) gvtPanel.style.display = 'flex';
-  if(structPanel) structPanel.style.display = 'none';
-  if(ioPanel) ioPanel.style.display = 'none';
-  if(cw) cw.style.display = 'none';
-  if(vtp) vtp.style.display = 'none';
+  showMainView('vars');
   selIds.clear();
   renderTabs();
   renderTree();
@@ -37,20 +50,11 @@ function openVarsTab() {
 
 function openIOMappingTab() {
   if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
-  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && activeDiagramId !== IO_MAPPING_TAB_ID) flushState();
+  flushActiveDiagramIfNeeded();
   if(!openTabs.find(t=>t.id===IO_MAPPING_TAB_ID)) openTabs.push({id:IO_MAPPING_TAB_ID});
   activeDiagramId = IO_MAPPING_TAB_ID;
   localStorage.setItem('gf2-active', IO_MAPPING_TAB_ID);
-  const gvtPanel = document.getElementById('gvt-main-panel');
-  const structPanel = document.getElementById('struct-main-panel');
-  const ioPanel = document.getElementById('iomap-main-panel');
-  const cw = document.getElementById('canvas-wrap');
-  const vtp = document.getElementById('vartable-panel');
-  if(gvtPanel) gvtPanel.style.display = 'none';
-  if(structPanel) structPanel.style.display = 'none';
-  if(ioPanel) ioPanel.style.display = 'flex';
-  if(cw) cw.style.display = 'none';
-  if(vtp) vtp.style.display = 'none';
+  showMainView('iomap');
   selIds.clear();
   renderTabs();
   renderTree();
@@ -58,19 +62,12 @@ function openIOMappingTab() {
 }
 
 function openStructTab(devId) {
-  if(activeDiagramId && activeDiagramId !== VARS_TAB_ID && !String(activeDiagramId).startsWith(STRUCT_TAB_PREFIX)) flushState();
+  flushActiveDiagramIfNeeded();
   const tabId = STRUCT_TAB_PREFIX + devId;
   if(!openTabs.find(t=>t.id===tabId)) openTabs.push({id:tabId});
   activeDiagramId = tabId;
   localStorage.setItem('gf2-active', tabId);
-  const gvtPanel = document.getElementById('gvt-main-panel');
-  const structPanel = document.getElementById('struct-main-panel');
-  const cw = document.getElementById('canvas-wrap');
-  const vtp = document.getElementById('vartable-panel');
-  if(gvtPanel) gvtPanel.style.display = 'none';
-  if(structPanel) structPanel.style.display = 'flex';
-  if(cw) cw.style.display = 'none';
-  if(vtp) vtp.style.display = 'none';
+  showMainView('struct');
   renderTabs();
   renderTree();
   renderStructPanel(devId);
@@ -94,27 +91,19 @@ function renderStructPanel(devId) {
       <td>${esc2(sig.name||'')}</td>
       <td><span class="sdcol-type sig-bool">${esc2(sig.dataType||'Bool')}</span></td>
       <td><span class="sdcol-io vt-${String(sig.varType||'Var').toLowerCase()}">${esc2(sig.varType||'Var')}</span></td>
+      <td>${esc2(sig.address||'')}</td>
       <td>${esc2(sig.comment||'')}</td>
     </tr>`).join('');
   body.innerHTML = `
     <div class="et-section-title">${esc2(dev.name)} signals</div>
     <table class="et-table">
-      <thead><tr><th>Signal</th><th>Data Type</th><th>Variable Type</th><th>Comment</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="vt-empty">No signals</td></tr>'}</tbody>
+      <thead><tr><th>Signal</th><th>Data Type</th><th>Variable Type</th><th>Address</th><th>Comment</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" class="vt-empty">No signals</td></tr>'}</tbody>
     </table>`;
 }
 
 function _showCanvas() {
-  const gvtPanel = document.getElementById('gvt-main-panel');
-  const structPanel = document.getElementById('struct-main-panel');
-  const ioPanel = document.getElementById('iomap-main-panel');
-  const cw = document.getElementById('canvas-wrap');
-  const vtp = document.getElementById('vartable-panel');
-  if(gvtPanel) gvtPanel.style.display = 'none';
-  if(structPanel) structPanel.style.display = 'none';
-  if(ioPanel) ioPanel.style.display = 'none';
-  if(cw) cw.style.display = '';
-  if(vtp) vtp.style.display = '';
+  showMainView('canvas');
 }
 
 function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {

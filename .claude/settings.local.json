@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python *)",
       "Bash(node *)",
-      "PowerShell(node --check \"src/js/editor/tree.js\")"
+      "PowerShell(node --check \"src/js/editor/tree.js\")",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "PowerShell(node --check \"src\\\\js\\\\editor\\\\vars.js\")"
     ]
   }
 }

@@ -563,6 +563,7 @@ function openDeviceTypeModal(devId) {
             <th style="width:140px;">Signal name</th>
             <th style="width:67px;">Data type</th>
             <th style="width:80px;">Variable type</th>
+            <th style="width:110px;">Address</th>
             <th>Comment</th>
             <th style="width:22px;"></th>
           </tr></thead>
@@ -606,6 +607,7 @@ function devModalAddRow(sig) {
         <option value="Var"    ${(sig?.varType||'')==='Var'   ?'selected':''}>Var</option>
       </select>
     </td>
+    <td><input class="dev-sig-input" placeholder="%IX0.0 / %QX0.0" value="${esc2(sig?.address||'')}" data-f="address" style="color:var(--amber);"></td>
     <td><input class="dev-sig-input" placeholder="e.g. Lower limit sensor" value="${esc2(sig?.comment||'')}" data-f="comment" style="color:var(--text2);"></td>
     <td><button class="dev-del-row" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
@@ -622,6 +624,7 @@ function confirmDeviceType() {
     name:    tr.querySelector('[data-f="name"]').value.trim(),
     dataType:tr.querySelector('[data-f="dataType"]').value,
     varType: tr.querySelector('[data-f="varType"]').value,
+    address: tr.querySelector('[data-f="address"]')?.value.trim() || '',
     comment: tr.querySelector('[data-f="comment"]').value.trim()
   })).filter(s=>s.name);
 

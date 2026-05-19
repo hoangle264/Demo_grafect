@@ -238,7 +238,7 @@ function loadProject() {
 
 // ── Flush active diagram to localStorage ──────────────────────
 function flushState() {
-  if (!activeDiagramId || activeDiagramId === '__vars__' || String(activeDiagramId).startsWith('__struct__:')) return;
+  if (!activeDiagramId || activeDiagramId === '__vars__' || activeDiagramId === '__io_mapping__' || String(activeDiagramId).startsWith('__struct__:')) return;
   saveDiagramData(activeDiagramId);
   markModified(activeDiagramId, false);
 }

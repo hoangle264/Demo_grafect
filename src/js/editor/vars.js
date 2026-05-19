@@ -651,6 +651,21 @@ function renderIOMappingTable(filter) {
   });
 }
 
+function clearIOMappingImport() {
+  if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
+  const hasData = (project.ioMapping.physicalIOs || []).length || (project.ioMapping.entries || []).length;
+  if (!hasData) {
+    toast('⚠ No IO mapping data to clear');
+    return;
+  }
+  if (!confirm('Clear all imported IO Mapping data?')) return;
+  project.ioMapping.physicalIOs = [];
+  project.ioMapping.entries = [];
+  saveProject();
+  renderIOMappingTable(document.getElementById('iomap-filter')?.value || 'All');
+  toast('✓ IO Mapping data cleared');
+}
+
 function exportIOCode() {
   if (typeof ensureProjectIOMapping === 'function') ensureProjectIOMapping();
   const io = project.ioMapping || { physicalIOs: [], entries: [] };
@@ -665,18 +680,18 @@ function exportIOCode() {
     if (!e.appVariable) return;
 
     const plcAddr = p.plcAddress || '';
-    const appVar = e.appVariable || '';
+    const appAddr = ioResolveVariableAddressTarget(e.appVariable)?.get() || e.appVariable || '';
 
     if (p.direction === 'Input') {
       inputLines.push('LD ' + plcAddr);
-      inputLines.push('OUT ' + appVar);
+      inputLines.push('OUT ' + appAddr);
     } else if (p.direction === 'Output') {
-      outputLines.push('LD ' + appVar);
+      outputLines.push('LD ' + appAddr);
       outputLines.push('OUT ' + plcAddr);
     }
   });
 
-  const code = [];
+  let code = [];
   if (inputLines.length) {
     code.push(';Input');
     code = code.concat(inputLines);
