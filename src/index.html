@@ -258,20 +258,24 @@
     </div>
   </section>
 
-  <section id="iomap-main-panel" class="virtual-panel is-hidden" aria-label="IO Mapping" style="display:none;flex:1;overflow:hidden;flex-direction:column;background:var(--bg1);">
+  <section id="iomap-main-panel" class="virtual-panel is-hidden" aria-label="IO Mapping">
     <div class="sub-panel-head sub-panel-head-fixed">
       <span class="sub-panel-title">🔌 IO MAPPING</span>
       <button class="panel-head-btn btn-cyan" onclick="showExcelImportModal()" title="Import Physical IO">📥 Import</button>
-      <select id="iomap-filter" class="dp-select" style="width:140px;height:28px;" onchange="renderIOMappingTable(this.value)">
+      <button class="panel-head-btn" onclick="exportIOCode()" title="Export IO Mapping Code">⬇ Export Code</button>
+    </div>
+    <div class="gvt-toolbar">
+      <select id="iomap-filter" class="gvt-search-input iomap-filter" onchange="renderIOMappingTable(this.value)">
         <option value="All">All</option>
         <option value="Input">Input</option>
         <option value="Output">Output</option>
         <option value="Unmatched">Unmatched</option>
       </select>
+      <span class="muted-mini">Map physical PLC addresses to application variables</span>
     </div>
     <div class="panel-scroll">
-      <table class="vt-table table-full">
-        <thead><tr><th>DeviceTag</th><th>PLCAddress</th><th>Direction</th><th>Description</th><th>App Variable</th><th>Status</th><th>Score</th><th>Action</th></tr></thead>
+      <table class="vt-table table-full iomap-table">
+        <thead><tr><th>Device Tag</th><th>PLC Address</th><th>Direction</th><th>Description</th><th>App Variable</th><th>Status</th><th>Score</th><th>Action</th></tr></thead>
         <tbody id="iomap-tbody"></tbody>
       </table>
     </div>
