@@ -727,10 +727,14 @@ function addDiagramInUnit(unitId, mode) {
 }
 function addDriverDiagram() {
   const id='diag-'+Date.now();
+  const flowAddressConfig = typeof cgFindNextBaseMrForUnit === 'function'
+    ? { addressMode: 'bool', addressLayout: 'linear', baseMr: cgFindNextBaseMrForUnit(null) }
+    : { addressMode: 'bool', addressLayout: 'linear', baseMr: 100 };
   project.diagrams.push({
     id, name:'Driver_Device', unitId:null, folderId:null,
     mode:'Drivers', diagramType:'Main',
-    machine:project.machineName||project.name, unit:'', description:''
+    machine:project.machineName||project.name, unit:'', description:'',
+    ...flowAddressConfig
   });
   saveDiagramData(id, {steps:[],transitions:[],parallels:[],connections:[],vars:[]}, 1, 0, 100, 80, 1);
   saveProject(); renderTree(); openTab(id);
@@ -959,7 +963,13 @@ function tctxDup(){
   const d=project.diagrams.find(x=>x.id===treeCtxTarget.id); if(!d) return;
   const newId='diag-'+Date.now();
   const srcData=loadDiagramData(d.id);
-  project.diagrams.push({id:newId, name:d.name+' Copy', folderId:d.folderId||null});
+  project.diagrams.push({
+    ...d,
+    id:newId,
+    name:d.name+' Copy',
+    folderId:d.folderId||null,
+    baseMr: typeof cgFindNextBaseMrForUnit === 'function' ? cgFindNextBaseMrForUnit(d.unitId || null) : d.baseMr
+  });
   if(srcData) saveDiagramData(newId, JSON.parse(JSON.stringify(srcData.state)), srcData.nextId, srcData.nextStepNum, srcData.viewX, srcData.viewY, srcData.viewScale);
   saveProject(); renderTree();
   toast('✓ Duplicated');

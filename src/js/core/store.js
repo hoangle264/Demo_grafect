@@ -196,6 +196,9 @@ function loadProject() {
         if(!d.machine)     d.machine = project.machineName;
         if(!d.unit)        d.unit = '';
       });
+      if (typeof cgMigrateFlowAddressConfigs === 'function' && cgMigrateFlowAddressConfigs()) {
+        saveProject();
+      }
       const lastId = localStorage.getItem('gf2-active');
       if (lastId && project.diagrams.find(d=>d.id===lastId)) {
         openTab(lastId);

@@ -158,14 +158,23 @@ function generateKVAll(diagIds, opts) {
           if (!data || !data.state) return null;
           const s = data.state;
           const sequence = cgResolveSequence(s);
-          const mrBase = opts.baseMR || 0;
-          const steps = sequence.map(function(item, i) {
-            const base = mrBase + i * 2;
+          if (typeof cgEnsureFlowAddressConfig === 'function') cgEnsureFlowAddressConfig(diag);
+          const mrMap = typeof cgBuildFlowStepAddressMap === 'function'
+            ? cgBuildFlowStepAddressMap(sequence, diag)
+            : {};
+          const validation = typeof cgValidateFlowAddressConfig === 'function'
+            ? cgValidateFlowAddressConfig(diag, s.steps || [])
+            : { valid: true, errors: [] };
+          if (!validation.valid) throw new Error(validation.errors.join('\n'));
+          const steps = sequence.map(function(item) {
+            const refs = mrMap[item.step.id] || {};
             return {
               number:    String(item.step.number).padStart(2, '0'),
               label:     item.step.label || '',
-              execAddr:  '@MR' + String(base).padStart(3, '0'),
-              doneAddr:  '@MR' + String(base + 1).padStart(3, '0'),
+              execAddr:  refs.exec || '',
+              doneAddr:  refs.done || '',
+              execAddress: refs.exec || '',
+              doneAddress: refs.done || '',
               actions:   item.step.actions || [],
               inCond:    item.inTrans ? (item.inTrans.condition || '1') : '1',
               outCond:   item.outTrans ? (item.outTrans.condition || '1') : '1',
@@ -231,18 +240,20 @@ function generateKVAll(diagIds, opts) {
     const s = data.state;
     const mode = diag.mode || 'Auto';
 
-    // Build sequence and pre-allocate MR addresses for this diagram.
-    // Each step needs 2 MR bits (exec + done).  The trailing +2 leaves a gap
-    // between diagrams to simplify manual editing in KV Studio.
+    // Build sequence and resolve stable addresses from the flow descriptor.
+    // Address ownership is JS-only; generators consume exec/done refs and do not
+    // derive them from sequence index.
+    if (typeof cgEnsureFlowAddressConfig === 'function') cgEnsureFlowAddressConfig(diag);
     const sequence = cgResolveSequence(s);
-    const mrMap = {};
-    sequence.forEach((item, i) => {
-      const base = mrOffset + i * 2;
-      mrMap[item.step.id] = {
-        exec: '@MR' + String(base).padStart(3, '0'),
-        done: '@MR' + String(base + 1).padStart(3, '0')
-      };
-    });
+    const validation = typeof cgValidateFlowAddressConfig === 'function'
+      ? cgValidateFlowAddressConfig(diag, s.steps || [])
+      : { valid: true, errors: [] };
+    if (!validation.valid) {
+      throw new Error(validation.errors.join('\n'));
+    }
+    const mrMap = typeof cgBuildFlowStepAddressMap === 'function'
+      ? cgBuildFlowStepAddressMap(sequence, diag)
+      : {};
     mrOffset += Math.max(sequence.length * 2, 2) + 2;
 
     const entry = { diag, s, mode, sequence, mrMap };
@@ -747,20 +758,11 @@ function generateKVDiagram(diagMeta, s, opts) {
   // Build ordered sequence: [{step, outTrans, inTrans}]
   const sequence = cgResolveSequence(s);
 
-  // Use pre-allocated mrMap from opts if available (multi-diagram pass),
-  // otherwise allocate locally from opts.mrOffset / opts.baseMR.
-  const mrMap = opts.mrMap || (() => {
-    const map = {};
-    const base0 = opts.mrOffset != null ? opts.mrOffset : (opts.baseMR || 0);
-    sequence.forEach((item, i) => {
-      const base = base0 + i * 2;
-      map[item.step.id] = {
-        exec: '@MR' + String(base).padStart(3, '0'),
-        done: '@MR' + String(base + 1).padStart(3, '0')
-      };
-    });
-    return map;
-  })();
+  // Use pre-resolved address map from opts if available (multi-diagram pass),
+  // otherwise resolve directly from the diagram's flow address config.
+  const mrMap = opts.mrMap || (typeof cgBuildFlowStepAddressMap === 'function'
+    ? cgBuildFlowStepAddressMap(sequence, diagMeta || {})
+    : {});
 
   // Helper: resolve address for a variable name (supports dot-notation)
   function resolveAddr(varOrAddr) {
@@ -920,7 +922,7 @@ function generateKVDiagram(diagMeta, s, opts) {
   });
 
   // ── MR Address map comment ────────────────────────────────────────────────
-  lines.push('; ── MR Address Allocation ─────────────────────────────');
+  lines.push('; ── Step Address Allocation ─────────────────────────');
   sequence.forEach(item => {
     const mr = mrMap[item.step.id];
     if (mr) {

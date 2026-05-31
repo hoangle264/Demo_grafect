@@ -95,11 +95,15 @@ function addDiagram(isFirst=false, unitId=null, mode='Auto', folderId=null) {
   const num = project.diagrams.length + 1;
   const unit = unitId ? (project.units.find(u=>u.id===unitId)?.name||'') : '';
   const name = isFirst ? 'GRAFCET_Main' : `GRAFCET_${mode}`;
+  const flowAddressConfig = typeof cgFindNextBaseMrForUnit === 'function'
+    ? { addressMode: 'bool', addressLayout: 'linear', baseMr: cgFindNextBaseMrForUnit(unitId || null) }
+    : { addressMode: 'bool', addressLayout: 'linear', baseMr: 100 };
   project.diagrams.push({
     id, name, folderId: folderId||null, unitId: unitId||null,
     mode: mode||'Auto', diagramType:'Main',
     machine: project.machineName||project.name||'Machine',
-    unit: unit, description:''
+    unit: unit, description:'',
+    ...flowAddressConfig
   });
   const emptyState = {steps:[],transitions:[],parallels:[],connections:[],vars:[]};
   saveDiagramData(id, emptyState, 1, 0, 100, 80, 1);

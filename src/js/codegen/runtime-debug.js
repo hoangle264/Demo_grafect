@@ -21,16 +21,11 @@ function cgRuntimeGetUpstreamDoneRefs(sequenceEntry, state, mrMap) {
   }));
 }
 
-function cgRuntimeAllocateStepRefs(sequenceEntries, baseMR) {
-  const mrMap = {};
-  (sequenceEntries || []).forEach(function(sequenceEntry, index) {
-    const base = baseMR + index * 2;
-    mrMap[sequenceEntry.step.id] = {
-      exec: '@MR' + String(base).padStart(3, '0'),
-      done: '@MR' + String(base + 1).padStart(3, '0')
-    };
-  });
-  return mrMap;
+function cgRuntimeAllocateStepRefs(sequenceEntries, flow) {
+  if (typeof cgBuildFlowStepAddressMap === 'function') {
+    return cgBuildFlowStepAddressMap(sequenceEntries || [], flow || {});
+  }
+  return {};
 }
 
 function cgRuntimeBuildDiagramPlan(diagId, baseMR, runtimeOptions) {
@@ -41,8 +36,16 @@ function cgRuntimeBuildDiagramPlan(diagId, baseMR, runtimeOptions) {
   }
 
   const state = loaded.state;
+  if (typeof cgEnsureFlowAddressConfig === 'function') cgEnsureFlowAddressConfig(diagMeta);
+  const validation = typeof cgValidateFlowAddressConfig === 'function'
+    ? cgValidateFlowAddressConfig(diagMeta, state.steps || [])
+    : { valid: true, errors: [] };
+  if (!validation.valid) {
+    throw new Error(validation.errors.join('\n'));
+  }
+
   const sequenceEntries = cgResolveSequence(state);
-  const mrMap = cgRuntimeAllocateStepRefs(sequenceEntries, baseMR);
+  const mrMap = cgRuntimeAllocateStepRefs(sequenceEntries, diagMeta);
   const resolverOptions = cgRuntimeBuildResolverOptions(runtimeOptions || {});
 
   const stepPlans = sequenceEntries.map(function(sequenceEntry) {
@@ -66,7 +69,11 @@ function cgRuntimeBuildDiagramPlan(diagId, baseMR, runtimeOptions) {
       mode: diagMeta.mode || 'Auto',
       unitId: diagMeta.unitId || ''
     },
-    baseMR: baseMR,
+    addressMode: diagMeta.addressMode || 'bool',
+    addressLayout: diagMeta.addressLayout || diagMeta.boolAddressMode || diagMeta.boolMode || 'linear',
+    baseMR: diagMeta.baseMr != null ? diagMeta.baseMr : baseMR,
+    activeWord: diagMeta.activeWord || '',
+    completeWord: diagMeta.completeWord || '',
     stepPlans: stepPlans,
     outputBindingPlan: cgBuildOutputBindingPlan(stepPlans)
   };

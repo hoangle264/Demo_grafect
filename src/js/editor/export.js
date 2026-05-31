@@ -18,7 +18,9 @@ function handleImport(e) {
         project.diagrams.push({
           id, name, unitId:null, folderId:null,
           mode:'Auto', diagramType:'Main',
-          machine:project.machineName||'', unit:'', description:''
+          machine:project.machineName||'', unit:'', description:'',
+          addressMode:'bool', addressLayout:'linear',
+          baseMr: typeof cgFindNextBaseMrForUnit === 'function' ? cgFindNextBaseMrForUnit(null) : 100
         });
         if(!raw.state.parallels) raw.state.parallels=[];
         if(!raw.state.vars) raw.state.vars=[];
@@ -117,8 +119,16 @@ function handleImport(e) {
             diagramType: d.diagramType||'Main',
             machine: d.machine||raw.project?.machineName||'',
             unit: d.unit||'',
-            description: d.description||''
+            description: d.description||'',
+            addressMode: d.addressMode || 'bool',
+            addressLayout: d.addressLayout || d.boolAddressMode || d.boolMode || 'linear',
+            baseMr: d.baseMr,
+            activeWord: d.activeWord,
+            completeWord: d.completeWord
           });
+          if (typeof cgEnsureFlowAddressConfig === 'function') {
+            cgEnsureFlowAddressConfig(project.diagrams[project.diagrams.length - 1]);
+          }
 
           saveDiagramData(
             newId,
@@ -155,6 +165,11 @@ function exportProject() {
     machine: d.machine||project.machineName||'',
     unit: d.unit||'',
     description: d.description||'',
+    addressMode: d.addressMode || 'bool',
+    addressLayout: d.addressLayout || d.boolAddressMode || d.boolMode || 'linear',
+    baseMr: d.baseMr,
+    activeWord: d.activeWord,
+    completeWord: d.completeWord,
     // Full diagram data (steps, transitions, vars, etc.)
     data: loadDiagramData(d.id)||{}
   }));
